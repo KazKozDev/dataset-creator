@@ -2,7 +2,7 @@
 
 Tool for creating and managing training datasets for LLM fine-tuning. Generates domain-specific examples through a web interface.
 
-Designed for AI researchers and ML engineers who need to create high-quality training datasets for language models. The platform provides an environment for generating, validating, and managing domain-specific data examples.
+Designed for AI researchers and ML engineers who need to create high-quality training datasets. The platform provides an environment for generating, validating, and managing data examples.
 
 ## Who is it for?
 
