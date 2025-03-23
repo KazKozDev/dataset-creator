@@ -1,0 +1,9 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+python-multipart==0.0.9
+sqlalchemy==2.0.27
+psutil==5.9.5
+openai==1.12.0
+anthropic==0.18.1
+python-dotenv==1.0.1
+pydantic==2.6.1 
