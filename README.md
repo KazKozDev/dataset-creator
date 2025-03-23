@@ -6,10 +6,10 @@ Designed for AI researchers and ML engineers who need to create high-quality tra
 
 ## Who is it for?
 
-- AI Researchers seeking comprehensive dataset generation capabilities
-- ML Engineers who need to create domain-specific training data
-- Organizations developing specialized models
-- Academic research teams requiring quality training datasets
+- AI Researchers developing new language models
+- ML Engineers building specialized applications
+- Organizations requiring custom AI solutions
+- Academic teams conducting language model research
 
 ![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
