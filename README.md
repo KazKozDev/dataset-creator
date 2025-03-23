@@ -1,6 +1,6 @@
 # Dataset Creator
 
-Tool for creating and managing training datasets for Large Language Models. Generates domain-specific examples through a web interface.
+Tool for creating and managing training datasets for LLM. Generates domain-specific examples through a web interface.
 
 ## What is LLM Dataset Creator?
 
