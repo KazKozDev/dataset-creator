@@ -4,14 +4,14 @@ Tool for creating and managing training datasets for LLM. Generates domain-speci
 
 Designed for AI researchers and ML engineers who need to create high-quality training datasets for language models. The platform provides an environment for generating, validating, and managing domain-specific data examples.
 
-![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
-
 ## Who is it for?
 
 - AI Researchers seeking comprehensive dataset generation capabilities
 - ML Engineers who need to create domain-specific training data
 - Organizations developing specialized models
 - Academic research teams requiring quality training datasets
+
+![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
 ## Features
 
