@@ -1,4 +1,4 @@
-# 📊 LLM Dataset Creator
+# Dataset Creator
 
 A Python-based application for generating, managing, and validating training datasets for Large Language Models.
 
@@ -15,10 +15,12 @@ LLM Dataset Creator enables AI researchers and ML engineers to generate high-qua
 Manual dataset creation for LLM training is time-consuming and error-prone. This tool automates the process while ensuring data quality and consistency across different domains.
 
 ### Target Users
-- AI Researchers working on LLM fine-tuning
-- ML Engineers developing specialized models
-- Organizations building domain-specific AI solutions
-- Academic teams preparing training data
+- AI Researchers developing new language models
+- ML Engineers building specialized applications
+- Organizations requiring custom AI solutions
+- Academic teams conducting language model research
+
+![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
 ## 2. Core Features
 
