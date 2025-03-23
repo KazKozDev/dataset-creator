@@ -3,37 +3,26 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+env/
+venv/
+.env
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
 
-# Node
+# Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# IDEs and editors
+# IDE
 .idea/
 .vscode/
 *.swp
@@ -41,7 +30,17 @@ yarn-error.log*
 .DS_Store
 
 # Project specific
-data/datasets/
-*.db
-*.sqlite3
+data/temp/
 *.log
+*.db
+.coverage
+htmlcov/
+
+# Keep these files
+!requirements.txt
+!package.json
+!package-lock.json
+!README.md
+!.env.example
+!docker-compose.yml
+!Dockerfile
