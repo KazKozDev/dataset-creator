@@ -8,6 +8,8 @@ LLM Dataset Creator is an open-source toolkit designed for AI researchers and ML
 
 The tool enables professionals to create structured datasets, process them in batches, and ensure data quality through integrated validation tools.
 
+![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
+
 ## Who is it for?
 
 - AI Researchers seeking comprehensive dataset generation capabilities
