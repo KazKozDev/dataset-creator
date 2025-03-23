@@ -1,25 +1,40 @@
-# 🎯 LLM Dataset Creator
+# 📊 LLM Dataset Creator
 
-[![Status](https://img.shields.io/badge/status-active-success.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
+Tool for creating and managing training datasets for Large Language Models. Generates domain-specific examples through a web interface.
 
-> A powerful tool for AI developers and researchers to create, enhance, and manage high-quality training datasets for Large Language Models (LLMs). Generate domain-specific examples, improve data quality, and streamline the dataset creation process - all through an intuitive web interface.
+## What is LLM Dataset Creator?
 
-**Perfect for:**
-- 🔬 AI Researchers working on LLM fine-tuning
-- 💻 ML Engineers building specialized AI models
-- 🏢 Companies developing domain-specific AI solutions
-- 🎓 Academic teams preparing training data
+LLM Dataset Creator is an open-source toolkit designed for AI researchers and ML engineers who need to create high-quality training datasets for language models. The platform provides an environment for generating, validating, and managing domain-specific data examples.
 
-## 🎥 Key Features
+The tool enables professionals to create structured datasets, process them in batches, and ensure data quality through integrated validation tools.
 
-- 🤖 Multi-Provider Support: Works with Ollama, OpenAI, and other LLM providers
-- 🎯 Domain-Specific Generation: Create datasets for support, education, healthcare, and more
-- 🔄 Async Processing: Efficient batch generation with real-time progress tracking
-- 📊 Quality Control: Built-in validation and enhancement tools
-- 🎨 Modern UI: Clean, responsive interface built with React and Chakra UI
+## Who is it for?
 
-## ⚡ Quick Start
+- AI Researchers seeking comprehensive dataset generation capabilities
+- ML Engineers who need to create domain-specific training data
+- Organizations developing specialized models
+- Academic research teams requiring quality training datasets
+
+## Features
+
+- **Multi-Provider Support**: Seamless integration with Ollama, OpenAI, and other LLM providers
+- **Domain-Specific Generation**: Create datasets tailored to specific fields and applications
+- **Batch Processing**: Generate and process multiple entries with progress tracking
+- **Data Validation**: Ensure dataset quality with integrated validation tools
+- **Modern Interface**: React/Chakra UI for intuitive dataset management
+
+## Architecture
+
+The application follows a modern microservices architecture:
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Frontend  | React, Chakra UI | Responsive UI for dataset creation and management |
+| Backend   | Python FastAPI | Efficient API services and LLM integration |
+| Database  | PostgreSQL | Secure storage for datasets and metadata |
+| Deployment| Docker | Consistent environments across systems |
+
+## Setup
 
 ### Prerequisites
 
@@ -27,22 +42,20 @@
 - Node.js 18+ (for development)
 - Python 3.9+ (for development)
 
-### Docker Installation
+### Docker Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/KazKozDev/dataset-creator.git
 cd dataset-creator
-
-# Launch with Docker Compose
 docker-compose up -d
 ```
 
 Access the application at: http://localhost:3000
 
-### Local Development
+### Development Setup
 
-1. Backend setup:
+1. Backend:
+
 ```bash
 cd backend
 python -m venv venv
@@ -51,67 +64,55 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-2. Frontend setup:
+2. Frontend:
+
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-## 💡 Usage Guide
+## Usage
 
-### 1. Configure LLM Provider
+### Provider Configuration
+1. Settings → Select provider → Configure parameters
 
-1. Go to "Settings"
-2. Select your provider (e.g., Ollama)
-3. Set up connection parameters
+### Dataset Generation
+1. Generator → Select domain → Set parameters → Start generation
 
-### 2. Generate Dataset
+### Quality Management
+1. Open dataset → Run quality tools → Apply improvements
 
-1. Navigate to "Generator"
-2. Choose domain (e.g., "Support", "Education")
-3. Configure generation parameters
-4. Start the process
+## API Integration
 
-### 3. Quality Enhancement
+Access comprehensive API documentation at http://localhost:8000/docs after startup.
 
-1. Open your dataset
-2. Use quality control tools
-3. Apply automatic improvements
-
-## 📚 API Reference
-
-### Core Endpoints
-
+Key endpoints:
 - `GET /api/datasets` - List datasets
 - `POST /api/datasets` - Create dataset
-- `GET /api/providers` - Available LLM providers
+- `GET /api/providers` - List providers
 - `GET /api/tasks` - Task status
 
-Full API documentation: http://localhost:8000/docs
+## Contributing
 
-## 🤝 Contributing
+1. Fork repository
+2. Create feature branch
+3. Make changes
+4. Submit Pull Request
 
-We welcome contributions! 
+## License
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a Pull Request
+MIT License. See LICENSE file for details.
 
-## 📝 License
+## Support
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+- GitHub Issues
+- Wiki
+- Email: kazkozdev@gmail.com
 
-## 🆘 Support
+## 📚 Dependencies
 
-- 📧 Email: support@example.com
-- 💬 GitHub Issues
-- 📚 [Wiki](https://github.com/KazKozDev/dataset-creator/wiki)
-
-## 🙏 Acknowledgments
-
-- [FastAPI](https://fastapi.tiangolo.com/)
-- [React](https://reactjs.org/)
-- [Chakra UI](https://chakra-ui.com/)
-- [Ollama](https://ollama.ai/)
+- FastAPI
+- React
+- Chakra UI
+- Ollama
