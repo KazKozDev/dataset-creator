@@ -3,111 +3,113 @@
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
 
-> Мощный инструмент для создания и улучшения наборов данных с помощью LLM моделей
+> A powerful tool for AI developers and researchers to create, enhance, and manage high-quality training datasets for Large Language Models (LLMs). Generate domain-specific examples, improve data quality, and streamline the dataset creation process - all through an intuitive web interface.
 
-## 🎥 Демонстрация
+**Perfect for:**
+- 🔬 AI Researchers working on LLM fine-tuning
+- 💻 ML Engineers building specialized AI models
+- 🏢 Companies developing domain-specific AI solutions
+- 🎓 Academic teams preparing training data
 
-![Demo](docs/demo.gif)
+## 🎥 Key Features
 
-## 🚀 Основные возможности
+- 🤖 Multi-Provider Support: Works with Ollama, OpenAI, and other LLM providers
+- 🎯 Domain-Specific Generation: Create datasets for support, education, healthcare, and more
+- 🔄 Async Processing: Efficient batch generation with real-time progress tracking
+- 📊 Quality Control: Built-in validation and enhancement tools
+- 🎨 Modern UI: Clean, responsive interface built with React and Chakra UI
 
-- 🤖 Интеграция с различными LLM провайдерами (Ollama, OpenAI и др.)
-- 📊 Создание и улучшение наборов данных для разных доменов
-- 🔄 Асинхронная обработка задач
-- 📈 Контроль качества данных
-- 🎨 Современный веб-интерфейс на React
+## ⚡ Quick Start
 
-## ⚡ Быстрый старт
+### Prerequisites
 
-### Предварительные требования
+- Docker and Docker Compose
+- Node.js 18+ (for development)
+- Python 3.9+ (for development)
 
-- Docker и Docker Compose
-- Node.js 18+ (для разработки)
-- Python 3.9+ (для разработки)
-
-### Установка через Docker
+### Docker Installation
 
 ```bash
-# Клонируем репозиторий
+# Clone the repository
 git clone https://github.com/KazKozDev/dataset-creator.git
 cd dataset-creator
 
-# Запускаем через Docker Compose
+# Launch with Docker Compose
 docker-compose up -d
 ```
 
-Приложение будет доступно по адресу: http://localhost:3000
+Access the application at: http://localhost:3000
 
-### Локальная разработка
+### Local Development
 
-1. Настройка backend:
+1. Backend setup:
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # или venv\Scripts\activate на Windows
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-2. Настройка frontend:
+2. Frontend setup:
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-## 💡 Использование
+## 💡 Usage Guide
 
-### 1. Настройка провайдера LLM
+### 1. Configure LLM Provider
 
-1. Перейдите в раздел "Settings"
-2. Выберите провайдера (например, Ollama)
-3. Укажите необходимые параметры подключения
+1. Go to "Settings"
+2. Select your provider (e.g., Ollama)
+3. Set up connection parameters
 
-### 2. Создание набора данных
+### 2. Generate Dataset
 
-1. Перейдите в раздел "Generator"
-2. Выберите домен (например, "Support", "Education")
-3. Настройте параметры генерации
-4. Запустите процесс
+1. Navigate to "Generator"
+2. Choose domain (e.g., "Support", "Education")
+3. Configure generation parameters
+4. Start the process
 
-### 3. Улучшение качества
+### 3. Quality Enhancement
 
-1. Откройте созданный набор данных
-2. Используйте инструменты контроля качества
-3. Примените автоматические улучшения
+1. Open your dataset
+2. Use quality control tools
+3. Apply automatic improvements
 
 ## 📚 API Reference
 
-### Основные эндпоинты
+### Core Endpoints
 
-- `GET /api/datasets` - Список наборов данных
-- `POST /api/datasets` - Создание набора данных
-- `GET /api/providers` - Доступные LLM провайдеры
-- `GET /api/tasks` - Статус задач
+- `GET /api/datasets` - List datasets
+- `POST /api/datasets` - Create dataset
+- `GET /api/providers` - Available LLM providers
+- `GET /api/tasks` - Task status
 
-Полная документация API доступна по адресу: http://localhost:8000/docs
+Full API documentation: http://localhost:8000/docs
 
-## 🤝 Участие в разработке
+## 🤝 Contributing
 
-Мы приветствуем ваш вклад в проект! 
+We welcome contributions! 
 
-1. Форкните репозиторий
-2. Создайте ветку для новой функциональности
-3. Внесите изменения
-4. Отправьте Pull Request
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a Pull Request
 
-## 📝 Лицензия
+## 📝 License
 
-Этот проект распространяется под лицензией MIT. Подробности в файле [LICENSE](LICENSE).
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-## 🆘 Поддержка
+## 🆘 Support
 
 - 📧 Email: support@example.com
 - 💬 GitHub Issues
 - 📚 [Wiki](https://github.com/KazKozDev/dataset-creator/wiki)
 
-## 🙏 Благодарности
+## 🙏 Acknowledgments
 
 - [FastAPI](https://fastapi.tiangolo.com/)
 - [React](https://reactjs.org/)
