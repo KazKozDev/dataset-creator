@@ -1,61 +1,78 @@
 # 📊 LLM Dataset Creator
 
-Tool for creating and managing training datasets for Large Language Models. Generates domain-specific examples through a web interface.
+A Python-based application for generating, managing, and validating training datasets for Large Language Models.
 
-## What is LLM Dataset Creator?
+## 1. Project Introduction
 
-LLM Dataset Creator is an open-source toolkit designed for AI researchers and ML engineers who need to create high-quality training datasets for language models. The platform provides an environment for generating, validating, and managing domain-specific data examples.
+**Project Type**: Web application with REST API backend  
+**Version**: 1.0.0-beta
 
-The tool enables professionals to create structured datasets, process them in batches, and ensure data quality through integrated validation tools.
+LLM Dataset Creator enables AI researchers and ML engineers to generate high-quality, domain-specific training datasets for language models. It automates the creation process through an intuitive web interface and provides tools for quality control and validation.
 
-## Who is it for?
+![Application Interface](docs/interface.png)
 
-- AI Researchers seeking comprehensive dataset generation capabilities
-- ML Engineers who need to create domain-specific training data
-- Organizations developing specialized models
-- Academic research teams requiring quality training datasets
+### Problem Solved
+Manual dataset creation for LLM training is time-consuming and error-prone. This tool automates the process while ensuring data quality and consistency across different domains.
 
-## Features
+### Target Users
+- AI Researchers working on LLM fine-tuning
+- ML Engineers developing specialized models
+- Organizations building domain-specific AI solutions
+- Academic teams preparing training data
 
-- **Multi-Provider Support**: Seamless integration with Ollama, OpenAI, and other LLM providers
-- **Domain-Specific Generation**: Create datasets tailored to specific fields and applications
-- **Batch Processing**: Generate and process multiple entries with progress tracking
-- **Data Validation**: Ensure dataset quality with integrated validation tools
-- **Modern Interface**: React/Chakra UI for intuitive dataset management
+## 2. Core Features
 
-## Architecture
+### Dataset Generation
+- **Function**: `create_dataset(domain: str, size: int, params: dict) -> Dataset`
+- **Input**: Domain specification, size requirements, and generation parameters
+- **Output**: Structured dataset in JSONL format
+- **Configuration**:
+  ```python
+  {
+    "domain": "support",
+    "size": 100,
+    "params": {
+      "language": "en",
+      "model": "llama2",
+      "temperature": 0.7
+    }
+  }
+  ```
 
-The application follows a modern microservices architecture:
+### Quality Control
+- **Function**: `validate_dataset(dataset_id: int, criteria: dict) -> ValidationReport`
+- **Input**: Dataset ID and validation criteria
+- **Output**: Quality metrics and validation report
+- **Parameters**: Customizable quality thresholds and validation rules
 
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Frontend  | React, Chakra UI | Responsive UI for dataset creation and management |
-| Backend   | Python FastAPI | Efficient API services and LLM integration |
-| Database  | PostgreSQL | Secure storage for datasets and metadata |
-| Deployment| Docker | Consistent environments across systems |
+### Batch Processing
+- **Function**: `process_batch(tasks: List[Task]) -> BatchResult`
+- **Input**: List of generation tasks
+- **Output**: Processing status and results
+- **Monitoring**: Real-time progress tracking
 
-## Setup
+## 3. Installation & Quick Start
 
 ### Prerequisites
-
 - Docker and Docker Compose
-- Node.js 18+ (for development)
-- Python 3.9+ (for development)
+- Python 3.9+
+- Node.js 18+
+- PostgreSQL 13+
 
-### Docker Setup
-
+### Quick Start (Docker)
 ```bash
+# Clone repository
 git clone https://github.com/KazKozDev/dataset-creator.git
 cd dataset-creator
+
+# Launch application
 docker-compose up -d
 ```
 
-Access the application at: http://localhost:3000
+Access the application at http://localhost:3000 (setup time: ~2 minutes)
 
 ### Development Setup
-
-1. Backend:
-
+1. Backend setup:
 ```bash
 cd backend
 python -m venv venv
@@ -64,55 +81,102 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-2. Frontend:
-
+2. Frontend setup:
 ```bash
 cd frontend
 npm install
 npm start
 ```
 
-## Usage
+## 4. API Documentation
 
-### Provider Configuration
-1. Settings → Select provider → Configure parameters
+### Dataset Operations
 
-### Dataset Generation
-1. Generator → Select domain → Set parameters → Start generation
+#### Create Dataset
+```python
+POST /api/datasets
+{
+    "domain": "support",
+    "size": 100,
+    "params": {
+        "language": "en",
+        "model": "llama2"
+    }
+}
+```
 
-### Quality Management
-1. Open dataset → Run quality tools → Apply improvements
+#### List Datasets
+```python
+GET /api/datasets
+Response: List[Dataset]
+```
 
-## API Integration
+### Task Management
 
-Access comprehensive API documentation at http://localhost:8000/docs after startup.
+#### Get Task Status
+```python
+GET /api/tasks/{task_id}
+Response: TaskStatus
+```
 
-Key endpoints:
-- `GET /api/datasets` - List datasets
-- `POST /api/datasets` - Create dataset
-- `GET /api/providers` - List providers
-- `GET /api/tasks` - Task status
+Full API documentation available at http://localhost:8000/docs
 
-## Contributing
+## 5. Project Structure
+```
+dataset-creator/
+├── backend/
+│   ├── main.py           # FastAPI application
+│   ├── generator.py      # Dataset generation logic
+│   ├── quality.py        # Quality control
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── components/   # React components
+│   │   └── services/     # API integration
+│   └── package.json
+├── docker/
+│   └── docker-compose.yml
+└── README.md
+```
 
-1. Fork repository
-2. Create feature branch
-3. Make changes
-4. Submit Pull Request
+## 6. Contributing
 
-## License
+1. Fork the repository
+2. Create a feature branch
+3. Follow code style guidelines:
+   - Backend: PEP 8
+   - Frontend: ESLint configuration
+4. Submit a Pull Request
 
-MIT License. See LICENSE file for details.
+### Testing
+```bash
+# Backend tests
+cd backend
+pytest
 
-## Support
+# Frontend tests
+cd frontend
+npm test
+```
 
-- GitHub Issues
-- Wiki
-- Email: kazkozdev@gmail.com
+## 7. License
 
-## 📚 Dependencies
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
+## 8. Contact & Support
+
+- **GitHub Issues**: Bug reports and feature requests
+- **Email**: kazkozdev@gmail.com
+- **Documentation**: [Project Wiki](https://github.com/KazKozDev/dataset-creator/wiki)
+
+## Dependencies
+
+### Backend
 - FastAPI
+- SQLAlchemy
+- Python LLM libraries
+
+### Frontend
 - React
 - Chakra UI
-- Ollama
+- React Query
