@@ -9,9 +9,9 @@ A synthetic data generation platform for creating and managing training datasets
 ## Introduction
 
 - Project Type: Web-based synthetic data generation platform
-- Primary Function: Creates, validates, and manages training datasets for language model fine-tuning using LLM-powered data synthesis
+- Primary Function: Creates, validates, and manages training datasets using LLM-powered data synthesis
 - Target Users: AI and academic researchers, ML engineers, organizations requiring custom AI solutions
-- Problem Solved: Simplifies the creation of high-quality, domain-specific training data needed for effective LLM fine-tuning
+- Problem Solved: Simplifies the creation of high-quality, domain-specific training data
 
 ![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
@@ -103,4 +103,5 @@ Key service endpoints:
 
 MIT License. See LICENSE file for details.
 
-- Email: kazkozdev@gmail.com
+### If you like this project, please give it a star ⭐
+### Artem KK (email: kazkozdev@gmail.com)
