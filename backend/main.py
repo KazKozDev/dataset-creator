@@ -997,6 +997,32 @@ async def delete_task(task_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/api/datasets/{dataset_id}/examples/{example_id}")
+async def update_dataset_example(
+    dataset_id: int,
+    example_id: int,
+    content: Dict[str, Any] = Body(...)
+):
+    """Update an example in a dataset"""
+    try:
+        print(f"Updating example {example_id} in dataset {dataset_id} with content:", content)
+        
+        # Check if dataset exists
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+        
+        # Update example
+        success = db.update_example(example_id, content=content)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Example {example_id} not found")
+        
+        print(f"Successfully updated example {example_id}")
+        return {"status": "updated"}
+    except Exception as e:
+        print(f"Error updating example {example_id}:", str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     

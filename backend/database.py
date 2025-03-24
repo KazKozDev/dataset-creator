@@ -468,6 +468,7 @@ def update_quality_job(
     examples_kept: Optional[int] = None,
     examples_fixed: Optional[int] = None,
     examples_removed: Optional[int] = None,
+    examples_total: Optional[int] = None,
     avg_quality_score: Optional[float] = None,
     result_file_path: Optional[str] = None,
     completed_at: Optional[str] = None,
@@ -499,6 +500,10 @@ def update_quality_job(
     if examples_removed is not None:
         update_fields.append('examples_removed = ?')
         params.append(examples_removed)
+        
+    if examples_total is not None:
+        update_fields.append('examples_total = ?')
+        params.append(examples_total)
     
     if avg_quality_score is not None:
         update_fields.append('avg_quality_score = ?')
@@ -643,41 +648,100 @@ def update_example(
     status: Optional[str] = None
 ) -> bool:
     """Update an example"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    update_fields = []
-    params = []
-    
-    if content is not None:
-        update_fields.append('content = ?')
-        params.append(json.dumps(content))
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        # Also update metadata if available in content
-        if 'metadata' in content:
-            update_fields.append('metadata = ?')
-            params.append(json.dumps(content['metadata']))
-    
-    if quality_score is not None:
-        update_fields.append('quality_score = ?')
-        params.append(quality_score)
-    
-    if status is not None:
-        update_fields.append('status = ?')
-        params.append(status)
-    
-    if not update_fields:
-        conn.close()
-        return False
-    
-    query = f'UPDATE examples SET {", ".join(update_fields)} WHERE id = ?'
-    params.append(example_id)
-    
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
-    
-    return True
+        # Get current example data
+        print(f"Getting example data for ID {example_id}")
+        cursor.execute('SELECT * FROM examples WHERE id = ?', (example_id,))
+        example = cursor.fetchone()
+        
+        if not example:
+            print(f"Example {example_id} not found")
+            raise Exception(f"Example {example_id} not found")
+        
+        # Get dataset file path
+        print(f"Getting dataset info for ID {example['dataset_id']}")
+        cursor.execute('SELECT file_path FROM datasets WHERE id = ?', (example['dataset_id'],))
+        dataset = cursor.fetchone()
+        
+        if not dataset:
+            print(f"Dataset {example['dataset_id']} not found")
+            raise Exception(f"Dataset {example['dataset_id']} not found")
+        
+        update_fields = []
+        params = []
+        
+        if content is not None:
+            print(f"Updating content for example {example_id}")
+            update_fields.append('content = ?')
+            params.append(json.dumps(content))
+        
+        if quality_score is not None:
+            update_fields.append('quality_score = ?')
+            params.append(quality_score)
+        
+        if status is not None:
+            update_fields.append('status = ?')
+            params.append(status)
+        
+        if not update_fields:
+            print("No fields to update")
+            raise Exception("No fields to update")
+        
+        query = f'UPDATE examples SET {", ".join(update_fields)} WHERE id = ?'
+        params.append(example_id)
+        
+        print(f"Executing update query: {query}")
+        cursor.execute(query, params)
+        
+        # Update the JSONL file
+        if content is not None and dataset['file_path']:
+            # Use relative path from backend directory
+            file_path = dataset['file_path']
+            print(f"Updating JSONL file at: {file_path}")
+            
+            if not os.path.exists(file_path):
+                print(f"File not found: {file_path}")
+                raise Exception(f"JSONL file not found at {file_path}")
+            
+            # Read all examples
+            print("Reading all examples from file")
+            examples = []
+            with open(file_path, 'r') as f:
+                for line in f:
+                    examples.append(json.loads(line))
+            
+            # Update the example at the correct index
+            if 0 <= example['example_index'] < len(examples):
+                print(f"Updating example at index {example['example_index']}")
+                examples[example['example_index']] = content['content']
+                
+                # Write back all examples
+                print("Writing updated examples back to file")
+                with open(file_path, 'w') as f:
+                    for ex in examples:
+                        f.write(json.dumps(ex) + '\n')
+                print("File update completed successfully")
+            else:
+                print(f"Invalid example index: {example['example_index']}")
+                raise Exception(f"Invalid example index: {example['example_index']}")
+        
+        print("Committing database changes")
+        conn.commit()
+        print(f"Example {example_id} updated successfully")
+        return True
+        
+    except Exception as e:
+        print(f"Error in update_example: {e}")
+        if conn:
+            conn.rollback()
+        raise Exception(str(e))
+    finally:
+        if conn:
+            conn.close()
 
 def get_example(example_id: int) -> Optional[Dict[str, Any]]:
     """Get an example by ID"""

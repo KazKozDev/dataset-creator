@@ -231,4 +231,30 @@ export const clearCache = async () => {
   return response.data;
 };
 
+export const updateExample = async (datasetId, exampleId, content) => {
+  console.log('Updating example:', { datasetId, exampleId, content });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/datasets/${datasetId}/examples/${exampleId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ content }),
+    });
+
+    console.log('Update response status:', response.status);
+    const data = await response.json();
+    console.log('Update response data:', data);
+
+    if (!response.ok) {
+      throw new Error(data.detail || 'Failed to update example');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error updating example:', error);
+    throw error;
+  }
+};
+
 export default api;

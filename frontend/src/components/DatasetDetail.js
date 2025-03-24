@@ -25,18 +25,31 @@ import {
   Flex,
   IconButton,
   useColorModeValue,
-  SimpleGrid
+  SimpleGrid,
+  Textarea,
+  useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
 } from '@chakra-ui/react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { FiArrowLeft, FiDownload, FiEdit } from 'react-icons/fi';
-import { getDatasetDetails, getDatasetExamples } from '../services/api';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { FiArrowLeft, FiDownload, FiEdit, FiSave, FiX } from 'react-icons/fi';
+import { getDatasetDetails, getDatasetExamples, updateExample } from '../services/api';
 
 const DatasetDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
+  const [editingExample, setEditingExample] = useState(null);
+  const [editContent, setEditContent] = useState(null);
+  const toast = useToast();
+  const queryClient = useQueryClient();
   
   const cardBg = useColorModeValue('white', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -64,6 +77,60 @@ const DatasetDetail = () => {
     enabled: !!dataset
   });
   
+  // Update example mutation
+  const updateExampleMutation = useMutation({
+    mutationFn: ({ exampleId, content }) => {
+      return fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/datasets/${id}/examples/${exampleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ content }),
+      }).then(response => {
+        if (!response.ok) {
+          return response.json().then(err => {
+            throw new Error(err.detail || 'Failed to update example');
+          });
+        }
+        return response.json();
+      });
+    },
+    onSuccess: (data, variables) => {
+      // Update the cache with the new data
+      queryClient.setQueryData(['dataset-examples', id, page, pageSize], (oldData) => {
+        if (!oldData) return oldData;
+        
+        return {
+          ...oldData,
+          examples: oldData.examples.map((example) =>
+            example.id === variables.exampleId
+              ? { ...example, content: variables.content }
+              : example
+          ),
+        };
+      });
+      
+      toast({
+        title: 'Example updated',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      setEditingExample(null);
+      setEditContent(null);
+    },
+    onError: (error) => {
+      toast({
+        title: 'Failed to update example',
+        description: error.message || 'Unknown error',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    },
+  });
+  
   const handlePreviousPage = () => {
     setPage(Math.max(page - 1, 1));
   };
@@ -78,8 +145,67 @@ const DatasetDetail = () => {
     window.open(`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/api/datasets/${id}/download`);
   };
   
+  const handleEditExample = (example) => {
+    setEditingExample(example);
+    setEditContent(JSON.stringify(example.content, null, 2));
+  };
+  
+  const handleSaveExample = async () => {
+    try {
+      const content = JSON.parse(editContent);
+      updateExampleMutation.mutate({
+        exampleId: editingExample.id,
+        content: content,
+      });
+    } catch (error) {
+      toast({
+        title: 'Invalid JSON format',
+        description: 'Please check your JSON syntax',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+  
   const formatExample = (example) => {
     if (!example) return null;
+    
+    // If this example is being edited, show edit form
+    if (editingExample && editingExample.id === example.id) {
+      return (
+        <Box>
+          <Textarea
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            minHeight="200px"
+            fontFamily="monospace"
+            mb={2}
+          />
+          <Flex justify="flex-end" gap={2}>
+            <Button
+              size="sm"
+              leftIcon={<FiSave />}
+              colorScheme="blue"
+              onClick={handleSaveExample}
+              isLoading={updateExampleMutation.isLoading}
+            >
+              Save
+            </Button>
+            <Button
+              size="sm"
+              leftIcon={<FiX />}
+              onClick={() => {
+                setEditingExample(null);
+                setEditContent(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </Flex>
+        </Box>
+      );
+    }
     
     // Extract content from example
     const content = example.content || example;
@@ -90,10 +216,17 @@ const DatasetDetail = () => {
           <Stack spacing={3} divider={<StackDivider />}>
             {content.messages?.map((message, idx) => (
               <Box key={idx} p={2} bg={message.role === 'user' ? 'gray.50' : 'white'} borderRadius="md">
-                <Flex align="center" mb={2}>
+                <Flex align="center" justify="space-between" mb={2}>
                   <Badge colorScheme={message.role === 'user' ? 'blue' : 'green'} fontSize="sm">
                     {message.role}
                   </Badge>
+                  <IconButton
+                    icon={<FiEdit />}
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditExample(example)}
+                    aria-label="Edit example"
+                  />
                 </Flex>
                 <Text whiteSpace="pre-wrap" fontSize="md">{message.content}</Text>
               </Box>
@@ -119,20 +252,31 @@ const DatasetDetail = () => {
       return (
         <Card p={4} variant="outline" borderWidth={1} borderRadius="md" boxShadow="sm">
           <Stack spacing={3}>
-            <Box p={2} bg="gray.50" borderRadius="md">
-              <Text fontSize="sm" fontWeight="bold" color="blue.600" mb={1}>Instruction:</Text>
-              <Text whiteSpace="pre-wrap" fontSize="md">{content.instruction}</Text>
-            </Box>
-            {content.input && (
-              <Box p={2} bg="gray.50" borderRadius="md">
-                <Text fontSize="sm" fontWeight="bold" color="purple.600" mb={1}>Input:</Text>
-                <Text whiteSpace="pre-wrap" fontSize="md">{content.input}</Text>
+            <Flex justify="space-between" align="center" mb={2}>
+              <Box flex="1">
+                <Box p={2} bg="gray.50" borderRadius="md">
+                  <Text fontSize="sm" fontWeight="bold" color="blue.600" mb={1}>Instruction:</Text>
+                  <Text whiteSpace="pre-wrap" fontSize="md">{content.instruction}</Text>
+                </Box>
+                {content.input && (
+                  <Box p={2} bg="gray.50" borderRadius="md" mt={2}>
+                    <Text fontSize="sm" fontWeight="bold" color="purple.600" mb={1}>Input:</Text>
+                    <Text whiteSpace="pre-wrap" fontSize="md">{content.input}</Text>
+                  </Box>
+                )}
+                <Box p={2} bg="gray.50" borderRadius="md" mt={2}>
+                  <Text fontSize="sm" fontWeight="bold" color="green.600" mb={1}>Output:</Text>
+                  <Text whiteSpace="pre-wrap" fontSize="md">{content.output}</Text>
+                </Box>
               </Box>
-            )}
-            <Box p={2} bg="gray.50" borderRadius="md">
-              <Text fontSize="sm" fontWeight="bold" color="green.600" mb={1}>Output:</Text>
-              <Text whiteSpace="pre-wrap" fontSize="md">{content.output}</Text>
-            </Box>
+              <IconButton
+                icon={<FiEdit />}
+                size="sm"
+                variant="ghost"
+                onClick={() => handleEditExample(example)}
+                aria-label="Edit example"
+              />
+            </Flex>
             
             {content.metadata && (
               <Box mt={4} pt={3} borderTopWidth={1}>
