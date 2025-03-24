@@ -1,5 +1,9 @@
 # Dataset Creator
 
+[![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/KazKozDev/dataset-creator)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE)
+[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://github.com/KazKozDev/dataset-creator/blob/main/docker-compose.yml)
+
 A Python-based application for generating, managing, and validating training datasets for Large Language Models.
 
 ## 1. Project Introduction
@@ -18,7 +22,7 @@ Manual dataset creation for LLM training is time-consuming and error-prone. This
 - AI Researchers developing new language models
 - ML Engineers building specialized applications
 - Organizations requiring custom AI solutions
-- Academic teams conducting language model research
+- Academic teams conducting language model research 
 
 ![screen](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
