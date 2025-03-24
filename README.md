@@ -102,7 +102,6 @@ MIT License. See [LICENSE](https://github.com/KazKozDev/dataset-creator/blob/mai
 
 ---
 
-## □ Contact & Support
 
 If you like this project, please give it a star ⭐
 
