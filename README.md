@@ -11,7 +11,9 @@ A synthetic data generation platform for creating and managing training datasets
 - Target Users: AI and academic researchers, ML engineers, organizations requiring custom AI solutions
 - Problem Solved: Simplifies the creation of high-quality, domain-specific training data
 
-![2](https://github.com/user-attachments/assets/0209e0de-99e9-4836-8b64-4da50fbc8e4d)
+![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
+
+![generator](https://github.com/user-attachments/assets/d6654f21-dd34-4c2c-a76a-cc5b4bd14712)
 
 ## □ Core Features
 
