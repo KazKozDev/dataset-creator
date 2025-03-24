@@ -98,8 +98,26 @@ Key service endpoints:
 
 ## □ License
 
-MIT License. See LICENSE file for details.
+MIT License. See [LICENSE](https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE) file for details.
+
+---
+
+## □ Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## □ Contact & Support
 
 If you like this project, please give it a star ⭐
 
-[Artem KK](https://www.linkedin.com/in/kazkozdev/)
+For questions, feedback, or support, reach out to:
+
+[Artem KK](https://www.linkedin.com/in/kazkozdev/) | [GitHub Issues](https://github.com/KazKozDev/dataset-creator/issues)
