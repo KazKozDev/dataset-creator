@@ -1,7 +1,6 @@
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" alt="logo" width="150"/>
-  SynthGen. Data Reimagined
 </p>
   
 <p align="center">
@@ -18,6 +17,7 @@
 
 <p align="center">
   A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. <br><br>
+    SynthGen. Data Reimagined<br><br>
   Leverages foundation models to generate domain-specific examples through an intuitive web interface.<br> Helping ML engineers and organizations easily generate high-quality data for custom AI solutions.
 
 ![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
