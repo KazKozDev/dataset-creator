@@ -1,4 +1,4 @@
-![logo-data](https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca)
+<center><img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" width="300"></center>
 
 # Dataset Creator
 [![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/KazKozDev/dataset-creator)
