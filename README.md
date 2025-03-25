@@ -6,7 +6,6 @@
 A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. Leverages foundation models to generate domain-specific examples through an intuitive web interface.
 
 ## Introduction
-- Project Type: Web-based synthetic data generation platform
 - Primary Function: Creates, validates, and manages training datasets using LLM-powered data synthesis
 - Target Users: AI and academic researchers, ML engineers, organizations requiring custom AI solutions
 - Problem Solved: Simplifies the creation of high-quality, domain-specific training data
