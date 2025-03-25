@@ -1,6 +1,7 @@
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" alt="logo" width="150"/>
+  SynthGen. Data Reimagined
 </p>
   
 <p align="center">
