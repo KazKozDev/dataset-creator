@@ -1,5 +1,9 @@
-<center><img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca"></center>
 
+<p align="center">
+  <img src="(https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca)" alt="logo" width="200"/>
+</p>
+<p align="center">
+  
 # Dataset Creator
 [![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/KazKozDev/dataset-creator)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE)
