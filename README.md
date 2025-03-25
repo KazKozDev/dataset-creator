@@ -17,7 +17,7 @@
 
 <p align="center">
   A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. <br><br>
-  Leverages foundation models to generate domain-specific examples through an intuitive web interface, helping ML engineers and organizations easily generate high-quality, domain-specific data for custom AI solutions.
+  Leverages foundation models to generate domain-specific examples through an intuitive web interface. Helping ML engineers and organizations easily generate high-quality, domain-specific data for custom AI solutions.
 
 ![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
