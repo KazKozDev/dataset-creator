@@ -3,7 +3,6 @@
   <img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" alt="logo" width="150"/>
 </p>
   
-# Dataset Creator
 [![Version](https://img.shields.io/badge/version-1.1.1-blue.svg)](https://github.com/KazKozDev/dataset-creator)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://github.com/KazKozDev/dataset-creator/blob/main/docker-compose.yml)
