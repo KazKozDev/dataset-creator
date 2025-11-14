@@ -107,6 +107,19 @@ class GenerationParams(BaseModel):
     model: Optional[str] = None
     provider: Optional[str] = None
 
+    # Agent system parameters
+    use_agents: bool = False
+    enable_critic: bool = True
+    enable_refiner: bool = True
+    enable_diversity: bool = True
+    enable_domain_expert: bool = True
+    min_quality_score: float = Field(7.0, ge=0.0, le=10.0)
+    max_refinement_iterations: int = Field(2, ge=1, le=5)
+    diversity_threshold: float = Field(0.7, ge=0.0, le=1.0)
+    temperature_generation: float = Field(0.8, ge=0.1, le=1.0)
+    temperature_critique: float = Field(0.3, ge=0.1, le=1.0)
+    temperature_refinement: float = Field(0.6, ge=0.1, le=1.0)
+
 class QualityParams(BaseModel):
     dataset_id: int
     batch_size: int = Field(10, gt=0, le=100)

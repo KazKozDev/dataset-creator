@@ -37,6 +37,17 @@
 - **Data Validation Framework**: Ensure dataset quality through comprehensive validation protocols
 - **Modern Interface Architecture**: React/Chakra UI implementation with advanced state management
 
+### 🤖 LLM Agent System (NEW!)
+- **Multi-Agent Architecture**: Specialized agents collaborate to create superior quality datasets
+- **Quality Enhancement Pipeline**: Generator → Critic → Refiner → Diversity → Domain Expert agents
+- **Automated Quality Control**: Iterative refinement ensures 8+ quality scores
+- **Diversity Guarantee**: Prevents repetitive examples through intelligent comparison
+- **Domain Validation**: Expert agents validate accuracy for medical, legal, financial, and other critical domains
+- **Configurable Workflow**: Customize agent behavior, thresholds, and iteration limits
+- **Detailed Metrics**: Track success rates, quality scores, and agent performance
+
+> 📚 **See [AGENT_SYSTEM.md](AGENT_SYSTEM.md) for complete documentation on the agent architecture**
+
 ### Production Deployment
 1. Clone the repository:
 ```bash

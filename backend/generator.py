@@ -17,12 +17,20 @@ from tqdm import tqdm
 from domains import DOMAINS, COMMON_PARAMS
 from llm_providers import LLMProvider, OllamaProvider
 import database as db
+from agents import AgentCoordinator, AgentConfig
 
 class DatasetGenerator:
     """Generator for synthetic datasets"""
-    
-    def __init__(self, llm_provider: LLMProvider):
+
+    def __init__(self, llm_provider: LLMProvider, use_agents: bool = False, agent_config: AgentConfig = None):
         self.llm_provider = llm_provider
+        self.use_agents = use_agents
+        self.agent_coordinator = None
+
+        # Initialize agent coordinator if agents are enabled
+        if use_agents:
+            config = agent_config or AgentConfig()
+            self.agent_coordinator = AgentCoordinator(llm_provider, config)
     
     def weighted_choice(self, options_dict: Dict[str, float]) -> str:
         """Choose an option based on weights"""
@@ -284,14 +292,47 @@ Return ONLY valid JSON without explanations or markdown formatting.
         return user_prompt
     
     def generate_example(self, scenario: Dict[str, Any], format_type: str, language: str = "en") -> Optional[Dict[str, Any]]:
-        """Generate a single synthetic example using LLM"""
-        # Create prompt based on selected language
+        """Generate a single synthetic example using LLM (with optional agent system)"""
+
+        # Use agent system if enabled
+        if self.use_agents and self.agent_coordinator:
+            try:
+                # Extract parameters from scenario
+                domain = scenario['domain']
+                subdomain = scenario['subdomain']
+
+                # Remove domain/subdomain from parameters to avoid duplication
+                parameters = {k: v for k, v in scenario.items()
+                             if k not in ['domain', 'subdomain', 'domain_name', 'subdomain_name']}
+
+                # Generate with agent system
+                final_example, agent_responses = self.agent_coordinator.generate_example(
+                    domain=domain,
+                    subdomain=subdomain,
+                    parameters=parameters,
+                    language=language,
+                    format_type=format_type
+                )
+
+                if final_example:
+                    # Log agent activity
+                    print(f"Agent system: Generated example with {len(agent_responses)} agent interactions")
+                    return final_example
+                else:
+                    print("Agent system failed, falling back to standard generation")
+                    # Fall through to standard generation
+
+            except Exception as e:
+                print(f"Error in agent generation: {e}")
+                # Fall through to standard generation
+
+        # Standard generation (original implementation)
         user_prompt = self.get_prompt_in_language(scenario, format_type, language)
-        
+
         try:
             # Generate text from LLM
             result = self.llm_provider.generate_text(user_prompt, temperature=0.7)
-            
+
             # Extract JSON from the result
             if isinstance(self.llm_provider, OllamaProvider):
                 data = self.llm_provider.extract_json_from_text(result)
@@ -299,28 +340,28 @@ Return ONLY valid JSON without explanations or markdown formatting.
                 # Try to extract JSON directly
                 start_idx = result.find('{')
                 end_idx = result.rfind('}') + 1
-                
+
                 if start_idx != -1 and end_idx > start_idx:
                     clean_json = result[start_idx:end_idx]
                     data = json.loads(clean_json)
                 else:
                     print("Could not find valid JSON in response")
                     return None
-            
+
             # Convert to instruction format if needed
             if format_type == 'instruction' and 'messages' in data:
                 messages = data['messages']
                 metadata = data.get('metadata', {})
-                
+
                 if len(messages) >= 2 and messages[0]['role'] == 'user' and messages[1]['role'] == 'assistant':
                     return {
                         "instruction": messages[0]['content'],
                         "output": messages[1]['content'],
                         "metadata": metadata
                     }
-            
+
             return data
-                
+
         except Exception as e:
             print(f"Error generating example: {e}")
             return None
@@ -377,16 +418,22 @@ Return ONLY valid JSON without explanations or markdown formatting.
         try:
             # Ensure directory exists
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            
+
             # Write examples to JSONL file
             with open(file_path, 'w', encoding='utf-8') as f:
                 for example in examples:
                     f.write(json.dumps(example, ensure_ascii=False) + '\n')
-            
+
             return True
         except Exception as e:
             print(f"Error saving examples: {e}")
             return False
+
+    def get_agent_stats(self) -> Optional[Dict[str, Any]]:
+        """Get agent coordinator statistics"""
+        if self.agent_coordinator:
+            return self.agent_coordinator.get_stats()
+        return None
 
 # Functions for the API
 async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: Dict[str, Any] = None):
@@ -397,7 +444,7 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
         if not job:
             print(f"Generation job {job_id} not found")
             return
-        
+
         # Extract parameters
         params = job['parameters']
         domain = params.get('domain')
@@ -405,10 +452,30 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
         format_type = params.get('format', 'chat')
         language = params.get('language', 'en')
         count = job['examples_requested']
-        
-        # Create generator
-        generator = DatasetGenerator(llm_provider)
-        
+
+        # Extract agent configuration
+        use_agents = params.get('use_agents', False)
+        agent_config = None
+
+        if use_agents:
+            # Build agent config from parameters
+            agent_config = AgentConfig(
+                enable_critic=params.get('enable_critic', True),
+                enable_refiner=params.get('enable_refiner', True),
+                enable_diversity=params.get('enable_diversity', True),
+                enable_domain_expert=params.get('enable_domain_expert', True),
+                min_quality_score=params.get('min_quality_score', 7.0),
+                max_refinement_iterations=params.get('max_refinement_iterations', 2),
+                diversity_threshold=params.get('diversity_threshold', 0.7),
+                temperature_generation=params.get('temperature_generation', 0.8),
+                temperature_critique=params.get('temperature_critique', 0.3),
+                temperature_refinement=params.get('temperature_refinement', 0.6)
+            )
+            print(f"Agent system enabled with quality threshold: {agent_config.min_quality_score}")
+
+        # Create generator with agent support
+        generator = DatasetGenerator(llm_provider, use_agents=use_agents, agent_config=agent_config)
+
         # Update job status
         db.update_generation_job(job_id, status="running")
         

@@ -62,6 +62,18 @@ const Generator = () => {
     temperature: 0.7,
     provider: 'ollama',
     model: '',
+    // Agent system parameters
+    use_agents: false,
+    enable_critic: true,
+    enable_refiner: true,
+    enable_diversity: true,
+    enable_domain_expert: true,
+    min_quality_score: 7.0,
+    max_refinement_iterations: 2,
+    diversity_threshold: 0.7,
+    temperature_generation: 0.8,
+    temperature_critique: 0.3,
+    temperature_refinement: 0.6,
   });
   const [currentStep, setCurrentStep] = useState(0);
   const [jobId, setJobId] = useState(null);
@@ -354,15 +366,207 @@ const Generator = () => {
               </Select>
             </FormControl>
           </SimpleGrid>
-          
+
+          <Divider my={6} />
+
+          {/* Agent System Configuration */}
+          <Box borderWidth="1px" borderRadius="lg" p={4} bg={useColorModeValue('blue.50', 'gray.800')}>
+            <FormControl display="flex" alignItems="center" mb={4}>
+              <FormLabel htmlFor="use-agents" mb="0" fontWeight="bold" fontSize="lg">
+                🤖 Enable LLM Agent System (Premium Quality)
+              </FormLabel>
+              <Switch
+                id="use-agents"
+                size="lg"
+                colorScheme="blue"
+                isChecked={generationParams.use_agents}
+                onChange={(e) => handleParamChange('use_agents', e.target.checked)}
+              />
+            </FormControl>
+
+            {generationParams.use_agents && (
+              <VStack spacing={4} align="stretch">
+                <Alert status="info" borderRadius="md">
+                  <AlertIcon />
+                  <Box>
+                    <Text fontWeight="bold">Multi-Agent Quality Enhancement System</Text>
+                    <Text fontSize="sm">
+                      Multiple specialized AI agents work together to create, critique, refine, and validate each example for superior quality and diversity.
+                    </Text>
+                  </Box>
+                </Alert>
+
+                <Divider />
+
+                <Text fontWeight="bold" fontSize="md">Agent Components:</Text>
+
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="enable-critic" mb="0">
+                      Critic Agent (Quality Evaluation)
+                    </FormLabel>
+                    <Switch
+                      id="enable-critic"
+                      isChecked={generationParams.enable_critic}
+                      onChange={(e) => handleParamChange('enable_critic', e.target.checked)}
+                    />
+                  </FormControl>
+
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="enable-refiner" mb="0">
+                      Refiner Agent (Improvement)
+                    </FormLabel>
+                    <Switch
+                      id="enable-refiner"
+                      isChecked={generationParams.enable_refiner}
+                      onChange={(e) => handleParamChange('enable_refiner', e.target.checked)}
+                    />
+                  </FormControl>
+
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="enable-diversity" mb="0">
+                      Diversity Agent (Uniqueness)
+                    </FormLabel>
+                    <Switch
+                      id="enable-diversity"
+                      isChecked={generationParams.enable_diversity}
+                      onChange={(e) => handleParamChange('enable_diversity', e.target.checked)}
+                    />
+                  </FormControl>
+
+                  <FormControl display="flex" alignItems="center">
+                    <FormLabel htmlFor="enable-domain-expert" mb="0">
+                      Domain Expert (Accuracy)
+                    </FormLabel>
+                    <Switch
+                      id="enable-domain-expert"
+                      isChecked={generationParams.enable_domain_expert}
+                      onChange={(e) => handleParamChange('enable_domain_expert', e.target.checked)}
+                    />
+                  </FormControl>
+                </SimpleGrid>
+
+                <Divider />
+
+                <Text fontWeight="bold" fontSize="md">Agent Configuration:</Text>
+
+                <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                  <FormControl>
+                    <FormLabel>Minimum Quality Score (0-10)</FormLabel>
+                    <NumberInput
+                      min={0}
+                      max={10}
+                      step={0.5}
+                      value={generationParams.min_quality_score}
+                      onChange={(valueString) => handleParamChange('min_quality_score', parseFloat(valueString))}
+                    >
+                      <NumberInputField />
+                      <NumberInputStepper>
+                        <NumberIncrementStepper />
+                        <NumberDecrementStepper />
+                      </NumberInputStepper>
+                    </NumberInput>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Examples below this score will be refined or rejected
+                    </Text>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Max Refinement Iterations (1-5)</FormLabel>
+                    <NumberInput
+                      min={1}
+                      max={5}
+                      value={generationParams.max_refinement_iterations}
+                      onChange={(valueString) => handleParamChange('max_refinement_iterations', parseInt(valueString))}
+                    >
+                      <NumberInputField />
+                      <NumberInputStepper>
+                        <NumberIncrementStepper />
+                        <NumberDecrementStepper />
+                      </NumberInputStepper>
+                    </NumberInput>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      How many times to refine low-quality examples
+                    </Text>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Generation Temperature: {generationParams.temperature_generation.toFixed(1)}</FormLabel>
+                    <Slider
+                      min={0.1}
+                      max={1.0}
+                      step={0.1}
+                      value={generationParams.temperature_generation}
+                      onChange={(value) => handleParamChange('temperature_generation', value)}
+                    >
+                      <SliderTrack>
+                        <SliderFilledTrack bg="green.500" />
+                      </SliderTrack>
+                      <SliderThumb boxSize={6} />
+                    </Slider>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Higher = more creative examples
+                    </Text>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Critique Temperature: {generationParams.temperature_critique.toFixed(1)}</FormLabel>
+                    <Slider
+                      min={0.1}
+                      max={1.0}
+                      step={0.1}
+                      value={generationParams.temperature_critique}
+                      onChange={(value) => handleParamChange('temperature_critique', value)}
+                    >
+                      <SliderTrack>
+                        <SliderFilledTrack bg="blue.500" />
+                      </SliderTrack>
+                      <SliderThumb boxSize={6} />
+                    </Slider>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Lower = more consistent evaluation
+                    </Text>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Refinement Temperature: {generationParams.temperature_refinement.toFixed(1)}</FormLabel>
+                    <Slider
+                      min={0.1}
+                      max={1.0}
+                      step={0.1}
+                      value={generationParams.temperature_refinement}
+                      onChange={(value) => handleParamChange('temperature_refinement', value)}
+                    >
+                      <SliderTrack>
+                        <SliderFilledTrack bg="purple.500" />
+                      </SliderTrack>
+                      <SliderThumb boxSize={6} />
+                    </Slider>
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                      Balanced for quality improvements
+                    </Text>
+                  </FormControl>
+                </SimpleGrid>
+
+                <Alert status="warning" borderRadius="md" size="sm">
+                  <AlertIcon />
+                  <Text fontSize="sm">
+                    Note: Agent system uses more LLM calls per example (2-6x), resulting in higher quality but slower generation and increased API costs.
+                  </Text>
+                </Alert>
+              </VStack>
+            )}
+          </Box>
+
           <Button
             mt={8}
             colorScheme="blue"
+            size="lg"
             isDisabled={!selectedSubdomain}
             onClick={handleStartGeneration}
             isLoading={startGenerationMutation.isLoading}
           >
-            Start Generation
+            {generationParams.use_agents ? '🤖 Start Agent-Enhanced Generation' : 'Start Generation'}
           </Button>
         </Box>
       </Box>
