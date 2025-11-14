@@ -1,0 +1,53 @@
+# Basic Synthetic Data Generation Pipeline
+# This config generates synthetic training data for IT support chatbot
+
+name: "it_support_chatbot_dataset"
+description: "Generate synthetic training data for IT support chatbot"
+
+# LLM Provider Configuration
+llm_provider:
+  provider: "ollama"  # Options: ollama, openai, anthropic
+  model: "gemma3:27b"
+  base_url: "http://localhost:11434"
+  # api_key: "${OPENAI_API_KEY}"  # Use for OpenAI/Anthropic
+
+# Data Sources
+data_sources:
+  - type: "synthetic"
+    enabled: true
+    config:
+      domain: "support"
+      subdomain: "technical"
+      format: "chat"
+      language: "en"
+      count: 500
+      temperature: 0.7
+
+# Data Processing
+deduplication:
+  enabled: true
+  method: "hash"  # Options: exact, hash, fuzzy
+  similarity_threshold: 0.9
+  keep_first: true
+
+cleaning:
+  enabled: true
+  min_length: 10
+  max_length: 10000
+  remove_toxic: true
+  remove_extra_whitespace: true
+  fix_encoding: true
+
+quality_control:
+  enabled: false  # Set to true to enable LLM-based quality control
+  batch_size: 10
+  threshold: 7.0
+  auto_fix: false
+  auto_remove: false
+
+# Output Configuration
+output:
+  dataset_name: "it_support_synthetic"
+  output_dir: "data/datasets"
+  format: "jsonl"  # Options: jsonl, json, csv
+  save_intermediate: false

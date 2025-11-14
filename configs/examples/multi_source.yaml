@@ -1,0 +1,82 @@
+# Multi-Source Data Collection Pipeline
+# This config combines multiple data sources into one dataset
+
+name: "multi_source_dataset"
+description: "Collect data from multiple sources and combine"
+
+# LLM Provider Configuration
+llm_provider:
+  provider: "openai"
+  model: "gpt-5.1"
+  api_key: "${OPENAI_API_KEY}"
+
+# Data Sources - Multiple sources will be combined
+data_sources:
+  # Synthetic data generation
+  - type: "synthetic"
+    enabled: true
+    config:
+      domain: "support"
+      subdomain: "technical"
+      format: "chat"
+      language: "en"
+      count: 200
+      temperature: 0.7
+
+  # Web scraping
+  - type: "web"
+    enabled: true
+    config:
+      urls:
+        - "https://example.com/faq"
+        - "https://example.com/help"
+      content_selector: "main"
+      max_concurrent: 3
+
+  # GitHub issues
+  - type: "api"
+    enabled: true
+    config:
+      api_type: "github"
+      api_key: "${GITHUB_TOKEN}"
+      params:
+        repo: "your-org/your-repo"
+        state: "closed"
+        max_issues: 100
+
+  # StackOverflow questions
+  - type: "api"
+    enabled: true
+    config:
+      api_type: "stackoverflow"
+      params:
+        tag: "python"
+        max_questions: 100
+
+# Data Processing
+deduplication:
+  enabled: true
+  method: "fuzzy"
+  similarity_threshold: 0.88
+  keep_first: true
+
+cleaning:
+  enabled: true
+  min_length: 20
+  max_length: 8000
+  remove_toxic: true
+  remove_extra_whitespace: true
+
+quality_control:
+  enabled: true
+  batch_size: 20
+  threshold: 7.0
+  auto_fix: true
+  auto_remove: false
+
+# Output Configuration
+output:
+  dataset_name: "multi_source_combined"
+  output_dir: "data/datasets"
+  format: "jsonl"
+  save_intermediate: true

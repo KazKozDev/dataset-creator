@@ -1,0 +1,44 @@
+# GitHub Issues Collection Pipeline
+# This config collects GitHub issues and converts them to training data
+
+name: "github_issues_dataset"
+description: "Collect GitHub issues and convert to training format"
+
+# LLM Provider Configuration
+llm_provider:
+  provider: "anthropic"
+  model: "claude-3-7-sonnet-20250219"
+  api_key: "${ANTHROPIC_API_KEY}"
+
+# Data Sources
+data_sources:
+  - type: "api"
+    enabled: true
+    config:
+      api_type: "github"
+      api_key: "${GITHUB_TOKEN}"  # Optional, increases rate limits
+      params:
+        repo: "fastapi/fastapi"  # Change to your target repo
+        state: "all"  # Options: open, closed, all
+        max_issues: 200
+
+# Data Processing
+deduplication:
+  enabled: true
+  method: "hash"
+  keep_first: true
+
+cleaning:
+  enabled: true
+  min_length: 20
+  max_length: 8000
+  remove_toxic: false
+
+quality_control:
+  enabled: false
+
+# Output Configuration
+output:
+  dataset_name: "fastapi_issues_qa"
+  output_dir: "data/datasets"
+  format: "jsonl"

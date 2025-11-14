@@ -1,0 +1,56 @@
+# Web Scraping Pipeline
+# This config scrapes documentation websites and converts to Q&A pairs
+
+name: "web_docs_qa_dataset"
+description: "Scrape technical documentation and convert to Q&A format"
+
+# LLM Provider Configuration
+llm_provider:
+  provider: "openai"
+  model: "gpt-5.1"
+  api_key: "${OPENAI_API_KEY}"
+
+# Data Sources
+data_sources:
+  - type: "web"
+    enabled: true
+    config:
+      # Option 1: Scrape specific URLs
+      urls:
+        - "https://docs.python.org/3/tutorial/index.html"
+        - "https://docs.python.org/3/library/index.html"
+
+      # Option 2: Crawl from start URL (uncomment to use)
+      # start_url: "https://docs.python.org/3/"
+      # max_pages: 100
+      # link_pattern: "docs\\.python\\.org/3/"
+
+      content_selector: "div.body"  # CSS selector for main content
+      max_concurrent: 5
+
+# Data Processing
+deduplication:
+  enabled: true
+  method: "fuzzy"
+  similarity_threshold: 0.85
+  keep_first: true
+
+cleaning:
+  enabled: true
+  min_length: 50
+  max_length: 5000
+  remove_toxic: true
+
+quality_control:
+  enabled: true
+  batch_size: 10
+  threshold: 7.5
+  auto_fix: true
+  auto_remove: false
+
+# Output Configuration
+output:
+  dataset_name: "python_docs_qa"
+  output_dir: "data/datasets"
+  format: "jsonl"
+  save_intermediate: true

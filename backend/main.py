@@ -23,6 +23,7 @@ from llm_providers import create_provider, get_provider_types
 import generator
 import quality
 import utils
+from api_extensions import router as api_v2_router
 
 # Initialize FastAPI app
 @asynccontextmanager
@@ -82,6 +83,9 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all methods
     allow_headers=["*"],  # Allow all headers
 )
+
+# Include API v2 router
+app.include_router(api_v2_router)
 
 # Initialize database
 db.initialize()

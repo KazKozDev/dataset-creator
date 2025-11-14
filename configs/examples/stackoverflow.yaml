@@ -1,0 +1,41 @@
+# StackOverflow Questions Collection Pipeline
+# This config collects StackOverflow questions by tag
+
+name: "stackoverflow_python_dataset"
+description: "Collect Python questions from StackOverflow"
+
+# LLM Provider Configuration
+llm_provider:
+  provider: "ollama"
+  model: "gemma3:27b"
+  base_url: "http://localhost:11434"
+
+# Data Sources
+data_sources:
+  - type: "api"
+    enabled: true
+    config:
+      api_type: "stackoverflow"
+      params:
+        tag: "python"  # Change to your target tag
+        max_questions: 150
+
+# Data Processing
+deduplication:
+  enabled: true
+  method: "hash"
+  keep_first: true
+
+cleaning:
+  enabled: true
+  min_length: 30
+  max_length: 10000
+
+quality_control:
+  enabled: false
+
+# Output Configuration
+output:
+  dataset_name: "stackoverflow_python_qa"
+  output_dir: "data/datasets"
+  format: "jsonl"
