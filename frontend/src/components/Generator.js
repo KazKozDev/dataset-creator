@@ -81,7 +81,8 @@ const Generator = () => {
   
   const cardBg = useColorModeValue('white', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-  
+  const agentBoxBg = useColorModeValue('blue.50', 'gray.800');
+
   // Fetch domains
   const { data: domainsData, isLoading: isLoadingDomains } = useQuery({
     queryKey: ['domains'],
@@ -370,7 +371,7 @@ const Generator = () => {
           <Divider my={6} />
 
           {/* Agent System Configuration */}
-          <Box borderWidth="1px" borderRadius="lg" p={4} bg={useColorModeValue('blue.50', 'gray.800')}>
+          <Box borderWidth="1px" borderRadius="lg" p={4} bg={agentBoxBg}>
             <FormControl display="flex" alignItems="center" mb={4}>
               <FormLabel htmlFor="use-agents" mb="0" fontWeight="bold" fontSize="lg">
                 🤖 Enable LLM Agent System (Premium Quality)
