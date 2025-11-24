@@ -6,7 +6,7 @@
 
 
 <p align="center">
-
+<b>Synthetic Data Foundry </b>
   
   A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. Leverages foundation models to generate domain-specific examples through an intuitive web interface. Helping ML engineers and organizations easily generate high-quality data for custom AI solutions.
 
