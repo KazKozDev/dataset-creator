@@ -3,22 +3,12 @@
   <img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" alt="logo" width="150"/>
 </p>
   
-<p align="center">
-  <a href="https://github.com/KazKozDev/dataset-creator">
-    <img src="https://img.shields.io/badge/version-1.1.1-blue.svg" alt="Version">
-  </a>
-  <a href="https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
-  </a>
-  <a href="https://github.com/KazKozDev/dataset-creator/blob/main/docker-compose.yml">
-    <img src="https://img.shields.io/badge/docker-ready-brightgreen.svg" alt="Docker">
-  </a>
-</p>
+
 
 <p align="center">
-  A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. <br><br>
-    SynthGen. Data Reimagined<br><br>
-  Leverages foundation models to generate domain-specific examples through an intuitive web interface.<br> Helping ML engineers and organizations easily generate high-quality data for custom AI solutions.
+
+  
+  A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. Leverages foundation models to generate domain-specific examples through an intuitive web interface. Helping ML engineers and organizations easily generate high-quality data for custom AI solutions.
 
 ![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
 
