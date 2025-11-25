@@ -1,0 +1,87 @@
+# LLM Provider Configuration
+# This file contains configuration for all available LLM providers
+# You can modify provider settings, add new providers, or change defaults
+
+# Default provider to use (ollama, openai, anthropic, or any custom provider)
+default_provider: "ollama"
+
+# LLM Provider Configurations
+providers:
+  # Ollama - Local LLM provider
+  ollama:
+    enabled: true
+    base_url: "http://localhost:11434"
+    default_model: "gpt-oss:20b"
+    timeout: 300
+    available_models:
+      - "gpt-oss:20b"
+      - "llama3:8b"
+      - "llama3:70b"
+      - "gemma3:27b"
+      - "mistral:7b"
+      - "codellama:34b"
+    description: "Local Ollama LLM provider - privacy-focused, no API costs"
+
+  # OpenAI - Cloud provider
+  openai:
+    enabled: false
+    api_key: "${OPENAI_API_KEY}"  # Environment variable
+    default_model: "gpt-4-turbo-preview"
+    timeout: 120
+    available_models:
+      - "gpt-4-turbo-preview"
+      - "gpt-4"
+      - "gpt-3.5-turbo"
+      - "gpt-3.5-turbo-16k"
+    description: "OpenAI GPT models - high quality, cloud-based"
+
+  # Anthropic Claude - Cloud provider
+  anthropic:
+    enabled: false
+    api_key: "${ANTHROPIC_API_KEY}"  # Environment variable
+    default_model: "claude-3-7-sonnet-20250219"
+    timeout: 120
+    available_models:
+      - "claude-3-7-sonnet-20250219"
+      - "claude-3-5-sonnet-20241022"
+      - "claude-3-opus-20240229"
+      - "claude-3-haiku-20240307"
+    description: "Anthropic Claude models - advanced reasoning, cloud-based"
+
+# Generation Settings
+generation:
+  default_temperature: 0.7
+  default_max_tokens: 4000
+  default_batch_size: 10
+  max_concurrent_requests: 5
+  retry_attempts: 3
+  retry_delay: 2
+
+# Quality Control Settings
+quality:
+  default_threshold: 7.0
+  default_batch_size: 10
+  auto_fix_enabled: false
+  auto_remove_enabled: false
+
+# System Settings
+system:
+  data_directory: "./data"
+  datasets_directory: "./data/datasets"
+  cache_directory: "./data/cache"
+  max_concurrent_jobs: 2
+  enable_caching: true
+  cache_ttl_hours: 24
+  log_level: "info"
+
+# Database Settings
+database:
+  type: "sqlite"
+  path: "./llm_dataset_creator.db"
+
+# API Settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins: ["*"]
+  docs_enabled: true

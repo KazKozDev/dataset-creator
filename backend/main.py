@@ -19,19 +19,34 @@ from contextlib import asynccontextmanager
 
 import database as db
 from domains import DOMAINS, get_domains, get_domain, get_subdomain, get_common_params
-from llm_providers import create_provider, get_provider_types
+from llm_providers import (
+    get_provider,
+    get_default_provider,
+    list_available_providers,
+    get_provider_models,
+    test_provider_availability,
+    ProviderRegistry
+)
 import generator
 import quality
 import utils
+from config import get_config, reload_config
+from prompts import get_manager, PromptValidator, ValidationError
+from exporters import HuggingFaceExporter, OpenAIExporter
+from analytics import get_tracker, DatasetStats
 
 # Initialize FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events handler"""
+    # Load configuration
+    config = get_config()
+    config.ensure_directories()
+
     # Initialize database
     db.init_db()
     db.ensure_data_dir()
-    
+
     # Scan for datasets
     datasets = utils.scan_for_datasets()
     for file_path in datasets:
@@ -86,14 +101,10 @@ app.add_middleware(
 # Initialize database
 db.initialize()
 
-# Create LLM provider based on environment variables or config
-DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
-DEFAULT_MODEL = os.environ.get("LLM_MODEL", "gemma3:27b")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Global configuration instance
+config = get_config()
 
-# Global LLM provider instance
+# Global LLM provider instance (lazy-loaded)
 llm_provider = None
 
 # Pydantic models for request/response validation
@@ -122,35 +133,62 @@ class ProviderConfig(BaseModel):
     api_key: Optional[str] = None
     base_url: Optional[str] = None
 
+class PromptTemplateCreate(BaseModel):
+    template_data: Dict[str, Any]
+    overwrite: bool = False
+
+class PromptTemplateRender(BaseModel):
+    template_name: str
+    variables: Dict[str, Any]
+
+class ExportRequest(BaseModel):
+    dataset_id: int
+    format: str = Field(..., description="Export format: huggingface, openai, alpaca, csv")
+    output_filename: str
+    system_message: Optional[str] = None
+    train_split: float = Field(1.0, ge=0.0, le=1.0, description="Training split ratio")
+    additional_params: Dict[str, Any] = Field(default_factory=dict)
+
 # Helper function to get or create LLM provider
-def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, api_key: Optional[str] = None, base_url: Optional[str] = None):
-    """Get or create LLM provider"""
+def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, **kwargs):
+    """
+    Get or create LLM provider using configuration system
+
+    Args:
+        provider_type: Name of the provider (ollama, openai, anthropic)
+        model: Model name to use (overrides config default)
+        **kwargs: Additional parameters to override config
+
+    Returns:
+        LLMProvider instance
+    """
     global llm_provider
-    
+
+    # Build override parameters
+    override_params = {}
+    if model:
+        override_params['model'] = model
+    override_params.update(kwargs)
+
     # Use existing provider if no changes
-    if llm_provider and not (provider_type or model or api_key or base_url):
+    if llm_provider and not (provider_type or override_params):
         return llm_provider
-    
-    # Use defaults if not specified
-    provider_type = provider_type or DEFAULT_PROVIDER
-    
-    # Create provider based on type
-    if provider_type.lower() == "ollama":
-        model = model or DEFAULT_MODEL
-        base_url = base_url or OLLAMA_URL
-        llm_provider = create_provider("ollama", model=model, base_url=base_url)
-    elif provider_type.lower() == "openai":
-        model = model or "gpt-4"
-        api_key = api_key or OPENAI_API_KEY
-        llm_provider = create_provider("openai", model=model, api_key=api_key)
-    elif provider_type.lower() == "anthropic":
-        model = model or "claude-3-7-sonnet-20250219"
-        api_key = api_key or ANTHROPIC_API_KEY
-        llm_provider = create_provider("anthropic", model=model, api_key=api_key)
-    else:
-        raise ValueError(f"Unsupported provider type: {provider_type}")
-    
-    return llm_provider
+
+    # Create or get provider
+    try:
+        if override_params:
+            llm_provider = get_provider(provider_type, **override_params)
+        else:
+            llm_provider = get_provider(provider_type)
+        return llm_provider
+    except Exception as e:
+        print(f"Error creating provider: {e}")
+        # Fallback to default provider if specified one fails
+        if provider_type:
+            print(f"Falling back to default provider")
+            llm_provider = get_default_provider()
+            return llm_provider
+        raise
 
 # API Routes
 @app.get("/")
@@ -199,8 +237,24 @@ async def get_common_parameters():
 # LLM provider routes
 @app.get("/api/providers")
 async def list_providers():
-    """List available LLM providers"""
-    return {"providers": get_provider_types()}
+    """List available LLM providers from configuration"""
+    try:
+        providers = list_available_providers()
+        return {
+            "providers": [
+                {
+                    "name": name,
+                    "enabled": config.get("enabled", True),
+                    "description": config.get("description", ""),
+                    "default_model": config.get("default_model", ""),
+                    "available_models": config.get("available_models", [])
+                }
+                for name, config in providers.items()
+            ],
+            "default_provider": get_config().get_default_provider()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/providers/config")
 async def set_provider_config(config: ProviderConfig):
@@ -226,15 +280,293 @@ async def list_models(provider: Optional[str] = Query(None)):
     """List available models for a provider"""
     try:
         # Use specified provider or default
-        provider_type = provider or DEFAULT_PROVIDER
-        
-        # Create provider and get models
-        provider = get_llm_provider(provider_type=provider_type)
-        models = provider.get_models()
-        
-        return {"provider": provider_type, "models": models}
+        provider_name = provider or config.get_default_provider()
+
+        # Get models from provider
+        models = get_provider_models(provider_name)
+
+        # Also get configured models from config
+        provider_config = config.get_provider_config(provider_name)
+        configured_models = provider_config.get("available_models", []) if provider_config else []
+
+        return {
+            "provider": provider_name,
+            "models": models if models else configured_models,
+            "configured_models": configured_models
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/providers/{provider_name}/status")
+async def check_provider_status(provider_name: str):
+    """Check if a provider is available and working"""
+    try:
+        is_available = test_provider_availability(provider_name)
+        provider_config = config.get_provider_config(provider_name)
+
+        return {
+            "provider": provider_name,
+            "available": is_available,
+            "enabled": provider_config.get("enabled", False) if provider_config else False,
+            "default_model": provider_config.get("default_model", "") if provider_config else ""
+        }
+    except Exception as e:
+        return {
+            "provider": provider_name,
+            "available": False,
+            "error": str(e)
+        }
+
+@app.post("/api/providers/{provider_name}/enable")
+async def enable_provider(provider_name: str):
+    """Enable a provider"""
+    try:
+        provider_config = config.get_provider_config(provider_name)
+        if not provider_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        config.update_provider_config(provider_name, {"enabled": True})
+        config.save_config()
+
+        return {"status": "success", "provider": provider_name, "enabled": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/providers/{provider_name}/disable")
+async def disable_provider(provider_name: str):
+    """Disable a provider"""
+    try:
+        provider_config = config.get_provider_config(provider_name)
+        if not provider_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        config.update_provider_config(provider_name, {"enabled": False})
+        config.save_config()
+
+        # Clear provider cache
+        ProviderRegistry.clear_cache()
+
+        return {"status": "success", "provider": provider_name, "enabled": False}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/providers/{provider_name}/config")
+async def update_provider_configuration(provider_name: str, provider_config: Dict[str, Any] = Body(...)):
+    """Update provider configuration"""
+    try:
+        current_config = config.get_provider_config(provider_name)
+        if not current_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        # Update configuration
+        config.update_provider_config(provider_name, provider_config)
+        config.save_config()
+
+        # Clear provider cache to force recreation
+        ProviderRegistry.clear_cache()
+
+        return {"status": "success", "provider": provider_name, "config": config.get_provider_config(provider_name)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/config/reload")
+async def reload_configuration():
+    """Reload configuration from file"""
+    try:
+        reload_config()
+        ProviderRegistry.clear_cache()
+        return {"status": "success", "message": "Configuration reloaded"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Prompt Template routes
+@app.get("/api/prompts/templates")
+async def list_prompt_templates(domain: Optional[str] = None, tags: Optional[str] = None):
+    """List all available prompt templates"""
+    try:
+        manager = get_manager()
+
+        # Parse tags if provided
+        tag_list = tags.split(',') if tags else None
+
+        templates = manager.list_templates(domain=domain, tags=tag_list)
+        return {"templates": templates, "count": len(templates)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/prompts/templates/{template_name}")
+async def get_prompt_template(template_name: str):
+    """Get a specific prompt template"""
+    try:
+        manager = get_manager()
+        template = manager.load_template(template_name)
+
+        if not template:
+            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
+
+        return {"template": template.to_dict()}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/prompts/templates")
+async def create_prompt_template(request: PromptTemplateCreate):
+    """Create a new prompt template"""
+    try:
+        manager = get_manager()
+        validator = PromptValidator()
+
+        # Validate template structure
+        is_valid, errors = validator.validate_template_structure(request.template_data)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail={"errors": errors})
+
+        # Create template object
+        template = manager.create_template_from_dict(request.template_data)
+        if not template:
+            raise HTTPException(status_code=400, detail="Invalid template data")
+
+        # Validate full template
+        is_valid, validation_errors = validator.validate_full_template(template)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail={"validation_errors": validation_errors})
+
+        # Save template
+        success = manager.save_template(template, overwrite=request.overwrite)
+        if not success:
+            raise HTTPException(status_code=409, detail=f"Template '{template.metadata.name}' already exists")
+
+        return {"status": "success", "template_name": template.metadata.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/prompts/templates/{template_name}")
+async def update_prompt_template(template_name: str, template_data: Dict[str, Any] = Body(...)):
+    """Update an existing prompt template"""
+    try:
+        manager = get_manager()
+        validator = PromptValidator()
+
+        # Ensure name matches
+        if template_data.get('metadata', {}).get('name') != template_name:
+            raise HTTPException(status_code=400, detail="Template name mismatch")
+
+        # Validate template structure
+        is_valid, errors = validator.validate_template_structure(template_data)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail={"errors": errors})
+
+        # Create template object
+        template = manager.create_template_from_dict(template_data)
+        if not template:
+            raise HTTPException(status_code=400, detail="Invalid template data")
+
+        # Validate full template
+        is_valid, validation_errors = validator.validate_full_template(template)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail={"validation_errors": validation_errors})
+
+        # Save template (with overwrite)
+        success = manager.save_template(template, overwrite=True)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update template")
+
+        return {"status": "success", "template_name": template_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/prompts/templates/{template_name}")
+async def delete_prompt_template(template_name: str):
+    """Delete a prompt template"""
+    try:
+        manager = get_manager()
+        success = manager.delete_template(template_name)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
+
+        return {"status": "success", "message": f"Template '{template_name}' deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/prompts/render")
+async def render_prompt_template(request: PromptTemplateRender):
+    """Render a prompt template with given variables"""
+    try:
+        manager = get_manager()
+        rendered = manager.render_template(request.template_name, request.variables)
+
+        if rendered is None:
+            raise HTTPException(status_code=404, detail=f"Template '{request.template_name}' not found")
+
+        return {"rendered_prompt": rendered}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/prompts/templates/{template_name}/variables")
+async def get_template_variables(template_name: str):
+    """Get variables defined in a template"""
+    try:
+        manager = get_manager()
+        variables = manager.get_template_variables(template_name)
+
+        if variables is None:
+            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
+
+        return {"template_name": template_name, "variables": variables}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/prompts/search")
+async def search_prompt_templates(q: str = Query(..., min_length=1)):
+    """Search prompt templates"""
+    try:
+        manager = get_manager()
+        results = manager.search_templates(q)
+
+        return {"query": q, "results": results, "count": len(results)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/prompts/validate")
+async def validate_prompt_template(template_data: Dict[str, Any] = Body(...)):
+    """Validate a prompt template without saving"""
+    try:
+        manager = get_manager()
+        validator = PromptValidator()
+
+        # Validate template structure
+        is_valid, errors = validator.validate_template_structure(template_data)
+        if not is_valid:
+            return {"valid": False, "errors": errors}
+
+        # Create template object
+        template = manager.create_template_from_dict(template_data)
+        if not template:
+            return {"valid": False, "errors": ["Invalid template data"]}
+
+        # Validate full template
+        is_valid, validation_errors = validator.validate_full_template(template)
+
+        return {
+            "valid": is_valid,
+            "errors": validation_errors if not is_valid else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Generator routes
 @app.post("/api/generator/start")
@@ -419,24 +751,137 @@ async def export_dataset_to_csv(dataset_id: int, background_tasks: BackgroundTas
     dataset = db.get_dataset(dataset_id)
     if not dataset:
         raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
-    
+
     file_path = dataset["file_path"]
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"Dataset file not found")
-    
+
     # Create output CSV path
     output_path = f"{os.path.splitext(file_path)[0]}.csv"
-    
+
     # Export in background
     def export_task():
         utils.export_to_csv(file_path, output_path, dataset["format"])
-    
+
     background_tasks.add_task(export_task)
-    
+
     return {
         "status": "exporting",
         "dataset_id": dataset_id,
         "output_path": output_path
+    }
+
+@app.post("/api/datasets/export")
+async def export_dataset(request: ExportRequest, background_tasks: BackgroundTasks):
+    """Export a dataset to various ML framework formats"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(request.dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {request.dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(request.dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found in dataset")
+
+        # Select exporter based on format
+        if request.format.lower() == "huggingface":
+            exporter = HuggingFaceExporter()
+
+            def export_task():
+                try:
+                    output_path = exporter.export(
+                        examples=examples,
+                        output_filename=request.output_filename,
+                        dataset_name=dataset.get("name", "dataset"),
+                        **request.additional_params
+                    )
+                    db.update_dataset(request.dataset_id, {"last_export": datetime.now().isoformat()})
+                    print(f"HuggingFace export completed: {output_path}")
+                except Exception as e:
+                    print(f"Export error: {e}")
+
+            background_tasks.add_task(export_task)
+
+            return {
+                "status": "exporting",
+                "dataset_id": request.dataset_id,
+                "format": "huggingface",
+                "output_filename": request.output_filename
+            }
+
+        elif request.format.lower() == "openai":
+            exporter = OpenAIExporter()
+
+            def export_task():
+                try:
+                    # Handle train/validation split if needed
+                    if request.train_split < 1.0:
+                        train_path, val_path = exporter.split_dataset(
+                            examples=examples,
+                            train_ratio=request.train_split,
+                            output_prefix=request.output_filename
+                        )
+                        print(f"OpenAI export completed: {train_path}, {val_path}")
+                    else:
+                        output_path = exporter.export(
+                            examples=examples,
+                            output_filename=request.output_filename,
+                            system_message=request.system_message,
+                            **request.additional_params
+                        )
+                        print(f"OpenAI export completed: {output_path}")
+
+                    db.update_dataset(request.dataset_id, {"last_export": datetime.now().isoformat()})
+                except Exception as e:
+                    print(f"Export error: {e}")
+
+            background_tasks.add_task(export_task)
+
+            return {
+                "status": "exporting",
+                "dataset_id": request.dataset_id,
+                "format": "openai",
+                "output_filename": request.output_filename,
+                "train_split": request.train_split
+            }
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported export format: {request.format}. Supported: huggingface, openai"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/export/formats")
+async def list_export_formats():
+    """List available export formats"""
+    return {
+        "formats": [
+            {
+                "name": "huggingface",
+                "description": "HuggingFace datasets format with metadata",
+                "file_extension": "directory with JSONL",
+                "features": ["dataset_info.json", "README.md", "push to hub script"]
+            },
+            {
+                "name": "openai",
+                "description": "OpenAI fine-tuning format (JSONL)",
+                "file_extension": ".jsonl",
+                "features": ["chat format", "train/val split", "validation report"]
+            },
+            {
+                "name": "csv",
+                "description": "CSV format for general use",
+                "file_extension": ".csv",
+                "features": ["spreadsheet compatible"]
+            }
+        ]
     }
 
 @app.delete("/api/datasets/{dataset_id}")
@@ -1022,6 +1467,104 @@ async def update_dataset_example(
     except Exception as e:
         print(f"Error updating example {example_id}:", str(e))
         raise HTTPException(status_code=400, detail=str(e))
+
+# Analytics routes
+@app.get("/api/analytics/summary")
+async def get_analytics_summary(days: int = Query(30, ge=1, le=365)):
+    """Get analytics summary for the specified period"""
+    try:
+        from datetime import datetime, timedelta
+
+        tracker = get_tracker()
+        start_date = datetime.now() - timedelta(days=days)
+        end_date = datetime.now()
+
+        summary = tracker.get_summary(start_date, end_date)
+
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/datasets/{dataset_id}/stats")
+async def get_dataset_analytics(dataset_id: int):
+    """Get detailed statistics for a specific dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            return {"error": "No examples found in dataset"}
+
+        # Analyze dataset
+        stats = DatasetStats.analyze_dataset(examples)
+
+        # Add recommendations
+        recommendations = DatasetStats.get_recommendations(examples)
+
+        return {
+            "dataset_id": dataset_id,
+            "dataset_name": dataset.get("name"),
+            "statistics": stats,
+            "recommendations": recommendations
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/analytics/datasets/compare")
+async def compare_datasets_analytics(dataset_ids: List[int] = Body(...)):
+    """Compare statistics between two datasets"""
+    try:
+        if len(dataset_ids) != 2:
+            raise HTTPException(status_code=400, detail="Exactly 2 dataset IDs required")
+
+        # Load both datasets
+        examples1 = db.get_examples(dataset_ids[0])
+        examples2 = db.get_examples(dataset_ids[1])
+
+        if not examples1:
+            raise HTTPException(status_code=404, detail=f"No examples in dataset {dataset_ids[0]}")
+        if not examples2:
+            raise HTTPException(status_code=404, detail=f"No examples in dataset {dataset_ids[1]}")
+
+        # Compare datasets
+        comparison = DatasetStats.compare_datasets(examples1, examples2)
+
+        return comparison
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/analytics/cost-estimate")
+async def estimate_generation_cost(
+    provider: str,
+    model: str,
+    examples_count: int = Query(..., ge=1),
+    avg_tokens_per_example: int = Query(1000, ge=1)
+):
+    """Estimate cost for generating examples"""
+    try:
+        tracker = get_tracker()
+
+        total_tokens = examples_count * avg_tokens_per_example
+        estimated_cost = tracker.estimate_generation_cost(provider, model, total_tokens)
+
+        return {
+            "provider": provider,
+            "model": model,
+            "examples_count": examples_count,
+            "avg_tokens_per_example": avg_tokens_per_example,
+            "total_tokens": total_tokens,
+            "estimated_cost_usd": round(estimated_cost, 2)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
