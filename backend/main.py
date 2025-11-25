@@ -34,6 +34,14 @@ from config import get_config, reload_config
 from prompts import get_manager, PromptValidator, ValidationError
 from exporters import HuggingFaceExporter, OpenAIExporter, AlpacaExporter, LangChainExporter
 from analytics import get_tracker, DatasetStats
+from quality_advanced import (
+    ToxicityDetector,
+    DeduplicationChecker,
+    DiversityAnalyzer,
+    QualityScorer,
+    QualityReportGenerator
+)
+from versioning import VersionManager, DatasetDiff, DatasetMerger
 
 # Initialize FastAPI app
 @asynccontextmanager
@@ -148,6 +156,23 @@ class ExportRequest(BaseModel):
     system_message: Optional[str] = None
     train_split: float = Field(1.0, ge=0.0, le=1.0, description="Training split ratio")
     additional_params: Dict[str, Any] = Field(default_factory=dict)
+
+class QualityCheckRequest(BaseModel):
+    dataset_id: int
+    check_types: List[str] = Field(default=["all"], description="Types: toxicity, deduplication, diversity, scoring, all")
+    text_field: str = "text"
+    generate_report: bool = True
+
+class VersionCreateRequest(BaseModel):
+    dataset_id: int
+    commit_message: str
+    author: str = "user"
+    tags: List[str] = Field(default_factory=list)
+
+class VersionMergeRequest(BaseModel):
+    version_id1: str
+    version_id2: str
+    strategy: str = Field("union", description="Merge strategy: union, intersection, prefer_branch1, prefer_branch2")
 
 # Helper function to get or create LLM provider
 def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, **kwargs):
@@ -1640,6 +1665,360 @@ async def estimate_generation_cost(
             "total_tokens": total_tokens,
             "estimated_cost_usd": round(estimated_cost, 2)
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Advanced Quality Control routes
+@app.post("/api/quality/check")
+async def run_quality_check(request: QualityCheckRequest, background_tasks: BackgroundTasks):
+    """Run advanced quality checks on a dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(request.dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {request.dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(request.dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found in dataset")
+
+        # Determine which checks to run
+        check_types = request.check_types
+        if "all" in check_types:
+            check_types = ["toxicity", "deduplication", "diversity", "scoring"]
+
+        results = {}
+
+        # Run checks
+        if "toxicity" in check_types:
+            detector = ToxicityDetector()
+            texts = [ex.get(request.text_field, "") for ex in examples]
+            toxicity_results = detector.detect_batch(texts)
+            results["toxicity"] = detector.get_statistics(toxicity_results)
+
+        if "deduplication" in check_types:
+            checker = DeduplicationChecker()
+            dedup_result = checker.check_exact_duplicates(examples, request.text_field)
+            results["deduplication"] = checker.get_statistics(dedup_result)
+
+        if "diversity" in check_types:
+            analyzer = DiversityAnalyzer()
+            diversity_metrics = analyzer.analyze(examples, request.text_field)
+            results["diversity"] = {
+                "vocabulary_size": diversity_metrics.vocabulary_size,
+                "lexical_diversity": diversity_metrics.lexical_diversity,
+                "entropy": diversity_metrics.entropy,
+                "recommendations": diversity_metrics.recommendations
+            }
+
+        if "scoring" in check_types:
+            scorer = QualityScorer()
+            quality_score = scorer.score_dataset(examples, request.text_field)
+            results["scoring"] = {
+                "overall_score": quality_score.overall_score,
+                "grade": quality_score.grade,
+                "component_scores": quality_score.component_scores,
+                "issues": quality_score.issues,
+                "strengths": quality_score.strengths
+            }
+
+        # Generate full report if requested
+        if request.generate_report:
+            def generate_report_task():
+                try:
+                    report_gen = QualityReportGenerator()
+                    report = report_gen.generate_full_report(
+                        examples,
+                        dataset.get("name", f"dataset_{request.dataset_id}"),
+                        request.text_field
+                    )
+                    print(f"Quality report generated for dataset {request.dataset_id}")
+                except Exception as e:
+                    print(f"Error generating report: {e}")
+
+            background_tasks.add_task(generate_report_task)
+
+        return {
+            "dataset_id": request.dataset_id,
+            "checks_run": check_types,
+            "results": results
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/quality/toxicity/filter")
+async def filter_toxic_examples(dataset_id: int, sensitivity: str = "medium"):
+    """Filter out toxic examples from a dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Filter toxic examples
+        detector = ToxicityDetector(sensitivity=sensitivity)
+        clean, toxic = detector.filter_toxic(examples)
+
+        return {
+            "dataset_id": dataset_id,
+            "total_examples": len(examples),
+            "clean_examples": len(clean),
+            "toxic_examples": len(toxic),
+            "toxic_percentage": round(len(toxic) / len(examples) * 100, 2) if examples else 0,
+            "message": f"Found {len(toxic)} toxic examples. Use /api/quality/toxicity/remove to remove them."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/quality/deduplication/remove")
+async def remove_duplicate_examples(
+    dataset_id: int,
+    method: str = Query("exact", description="Deduplication method: exact, fuzzy, semantic")
+):
+    """Remove duplicate examples from a dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Remove duplicates
+        checker = DeduplicationChecker()
+        unique_examples, duplicate_groups = checker.remove_duplicates(examples, method=method)
+
+        return {
+            "dataset_id": dataset_id,
+            "method": method,
+            "original_count": len(examples),
+            "unique_count": len(unique_examples),
+            "removed_count": len(examples) - len(unique_examples),
+            "duplicate_groups": len(duplicate_groups),
+            "message": f"Found {len(examples) - len(unique_examples)} duplicates. Create a new version to save changes."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Dataset Versioning routes
+@app.post("/api/versions/create")
+async def create_dataset_version(request: VersionCreateRequest):
+    """Create a new version of a dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(request.dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {request.dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(request.dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Create version
+        version_manager = VersionManager()
+        version = version_manager.create_version(
+            dataset_id=request.dataset_id,
+            examples=examples,
+            commit_message=request.commit_message,
+            author=request.author,
+            tags=request.tags
+        )
+
+        return {
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "commit_message": version.commit_message,
+            "timestamp": version.timestamp,
+            "examples_count": version.examples_count,
+            "tags": version.tags
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/versions/list/{dataset_id}")
+async def list_dataset_versions(dataset_id: int, limit: Optional[int] = None):
+    """List all versions of a dataset"""
+    try:
+        version_manager = VersionManager()
+        versions = version_manager.list_versions(dataset_id, limit=limit)
+
+        return {
+            "dataset_id": dataset_id,
+            "total_versions": len(versions),
+            "versions": [
+                {
+                    "version_id": v.version_id,
+                    "version_number": v.version_number,
+                    "commit_message": v.commit_message,
+                    "author": v.author,
+                    "timestamp": v.timestamp,
+                    "examples_count": v.examples_count,
+                    "tags": v.tags
+                }
+                for v in versions
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/versions/{version_id}")
+async def get_dataset_version(version_id: str):
+    """Get a specific version"""
+    try:
+        version_manager = VersionManager()
+        version = version_manager.get_version(version_id)
+
+        if not version:
+            raise HTTPException(status_code=404, detail=f"Version '{version_id}' not found")
+
+        return {
+            "version_id": version.version_id,
+            "version_number": version.version_number,
+            "dataset_id": version.dataset_id,
+            "commit_message": version.commit_message,
+            "author": version.author,
+            "timestamp": version.timestamp,
+            "examples_count": version.examples_count,
+            "tags": version.tags,
+            "parent_version": version.parent_version
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/versions/rollback/{version_id}")
+async def rollback_to_version(version_id: str):
+    """Rollback dataset to a specific version"""
+    try:
+        version_manager = VersionManager()
+        examples = version_manager.rollback_to_version(version_id)
+
+        if examples is None:
+            raise HTTPException(status_code=404, detail=f"Version '{version_id}' not found")
+
+        return {
+            "version_id": version_id,
+            "examples_count": len(examples),
+            "message": "Version restored. Create a new version to save changes."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/versions/diff/{version_id1}/{version_id2}")
+async def diff_versions(version_id1: str, version_id2: str):
+    """Calculate diff between two versions"""
+    try:
+        version_manager = VersionManager()
+        differ = DatasetDiff()
+
+        # Get both versions
+        examples1 = version_manager.get_version_examples(version_id1)
+        examples2 = version_manager.get_version_examples(version_id2)
+
+        if examples1 is None:
+            raise HTTPException(status_code=404, detail=f"Version '{version_id1}' not found")
+        if examples2 is None:
+            raise HTTPException(status_code=404, detail=f"Version '{version_id2}' not found")
+
+        # Calculate diff
+        diff_result = differ.diff(examples1, examples2)
+
+        return {
+            "version_id1": version_id1,
+            "version_id2": version_id2,
+            "summary": diff_result.summary,
+            "total_changes": diff_result.total_changes,
+            "added_count": len(diff_result.added),
+            "removed_count": len(diff_result.removed),
+            "modified_count": len(diff_result.modified)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/versions/merge")
+async def merge_versions(request: VersionMergeRequest):
+    """Merge two dataset versions"""
+    try:
+        version_manager = VersionManager()
+        merger = DatasetMerger()
+
+        # Get both versions
+        examples1 = version_manager.get_version_examples(request.version_id1)
+        examples2 = version_manager.get_version_examples(request.version_id2)
+
+        if examples1 is None:
+            raise HTTPException(status_code=404, detail=f"Version '{request.version_id1}' not found")
+        if examples2 is None:
+            raise HTTPException(status_code=404, detail=f"Version '{request.version_id2}' not found")
+
+        # Merge (using empty base for now)
+        merge_result = merger.merge(
+            base_examples=[],
+            branch1_examples=examples1,
+            branch2_examples=examples2,
+            strategy=request.strategy
+        )
+
+        return {
+            "version_id1": request.version_id1,
+            "version_id2": request.version_id2,
+            "strategy": request.strategy,
+            "success": merge_result.success,
+            "merged_count": len(merge_result.merged_examples),
+            "conflicts_count": len(merge_result.conflicts),
+            "stats": merge_result.stats,
+            "message": "Merge completed. Create a new version to save merged dataset."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/versions/history/{dataset_id}")
+async def get_version_history(dataset_id: int):
+    """Get version history with change summaries"""
+    try:
+        version_manager = VersionManager()
+        history = version_manager.get_version_history(dataset_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "total_versions": len(history),
+            "history": history
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
