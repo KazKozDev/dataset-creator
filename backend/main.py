@@ -42,6 +42,16 @@ from quality_advanced import (
     QualityReportGenerator
 )
 from versioning import VersionManager, DatasetDiff, DatasetMerger
+from collaboration import (
+    get_user_manager,
+    get_permission_manager,
+    get_comment_manager,
+    get_review_manager,
+    UserRole,
+    PermissionLevel,
+    ReviewStatus
+)
+from augmentation import DataAugmenter, AugmentationConfig
 
 # Initialize FastAPI app
 @asynccontextmanager
@@ -173,6 +183,64 @@ class VersionMergeRequest(BaseModel):
     version_id1: str
     version_id2: str
     strategy: str = Field("union", description="Merge strategy: union, intersection, prefer_branch1, prefer_branch2")
+
+# Collaboration request models
+class UserCreateRequest(BaseModel):
+    username: str
+    email: str
+    role: str = "viewer"  # admin, editor, viewer
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class UserUpdateRequest(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+class PermissionGrantRequest(BaseModel):
+    dataset_id: int
+    user_id: str
+    permission_level: str  # owner, write, read
+    granted_by: str
+
+class ShareDatasetRequest(BaseModel):
+    dataset_id: int
+    from_user_id: str
+    to_user_id: str
+    permission_level: str
+
+class CommentCreateRequest(BaseModel):
+    dataset_id: int
+    example_id: int
+    user_id: str
+    content: str
+    parent_comment_id: Optional[str] = None
+
+class CommentUpdateRequest(BaseModel):
+    content: str
+
+class ReviewCreateRequest(BaseModel):
+    dataset_id: int
+    example_id: int
+    reviewer_id: str
+    status: str  # pending, approved, rejected, needs_changes
+    feedback: Optional[str] = None
+
+class ReviewUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    feedback: Optional[str] = None
+
+class AugmentationRequest(BaseModel):
+    dataset_id: int
+    techniques: List[str] = Field(default=["synonym"], description="Techniques: synonym, random, paraphrase, backtranslation")
+    samples_per_example: int = Field(1, ge=1, le=5, description="Number of augmented samples per example")
+    text_field: str = "text"
+    synonym_ratio: float = Field(0.3, ge=0.0, le=1.0)
+    random_swap_ratio: float = Field(0.1, ge=0.0, le=0.5)
+    random_delete_ratio: float = Field(0.1, ge=0.0, le=0.5)
+    random_insert_ratio: float = Field(0.1, ge=0.0, le=0.5)
+    paraphrase_diversity: float = Field(0.7, ge=0.0, le=1.0)
+    save_augmented: bool = True
 
 # Helper function to get or create LLM provider
 def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, **kwargs):
@@ -2019,6 +2087,912 @@ async def get_version_history(dataset_id: int):
             "history": history
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# COLLABORATION API ENDPOINTS
+# ============================================================================
+
+# User Management Endpoints
+@app.post("/api/users/create")
+async def create_user(request: UserCreateRequest):
+    """Create a new user"""
+    try:
+        user_manager = get_user_manager()
+
+        # Parse role
+        try:
+            role = UserRole(request.role.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid role. Must be one of: {[r.value for r in UserRole]}"
+            )
+
+        user = user_manager.create_user(
+            username=request.username,
+            email=request.email,
+            role=role,
+            metadata=request.metadata
+        )
+
+        return {
+            "success": True,
+            "user": {
+                "user_id": user.user_id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.value,
+                "created_at": user.created_at
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/list")
+async def list_users(role: Optional[str] = None):
+    """List all users with optional role filter"""
+    try:
+        user_manager = get_user_manager()
+
+        # Parse role filter if provided
+        role_filter = None
+        if role:
+            try:
+                role_filter = UserRole(role.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid role. Must be one of: {[r.value for r in UserRole]}"
+                )
+
+        users = user_manager.list_users(role=role_filter)
+
+        return {
+            "total": len(users),
+            "users": [
+                {
+                    "user_id": u.user_id,
+                    "username": u.username,
+                    "email": u.email,
+                    "role": u.role.value,
+                    "created_at": u.created_at,
+                    "last_active": u.last_active
+                }
+                for u in users
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/{user_id}")
+async def get_user(user_id: str):
+    """Get user by ID"""
+    try:
+        user_manager = get_user_manager()
+        user = user_manager.get_user(user_id)
+
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {
+            "user_id": user.user_id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role.value,
+            "created_at": user.created_at,
+            "last_active": user.last_active,
+            "metadata": user.metadata
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/users/{user_id}")
+async def update_user(user_id: str, request: UserUpdateRequest):
+    """Update user information"""
+    try:
+        user_manager = get_user_manager()
+
+        # Parse role if provided
+        role = None
+        if request.role:
+            try:
+                role = UserRole(request.role.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid role. Must be one of: {[r.value for r in UserRole]}"
+                )
+
+        success = user_manager.update_user(
+            user_id=user_id,
+            username=request.username,
+            email=request.email,
+            role=role,
+            metadata=request.metadata
+        )
+
+        if not success:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get updated user
+        user = user_manager.get_user(user_id)
+
+        return {
+            "success": True,
+            "user": {
+                "user_id": user.user_id,
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.value
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/users/{user_id}")
+async def delete_user(user_id: str):
+    """Delete user"""
+    try:
+        user_manager = get_user_manager()
+        success = user_manager.delete_user(user_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return {"success": True, "message": f"User {user_id} deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Permission Management Endpoints
+@app.post("/api/permissions/grant")
+async def grant_permission(request: PermissionGrantRequest):
+    """Grant permission to a user for a dataset"""
+    try:
+        permission_manager = get_permission_manager()
+
+        # Parse permission level
+        try:
+            level = PermissionLevel(request.permission_level.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid permission level. Must be one of: {[p.value for p in PermissionLevel]}"
+            )
+
+        permission = permission_manager.grant_permission(
+            dataset_id=request.dataset_id,
+            user_id=request.user_id,
+            permission_level=level,
+            granted_by=request.granted_by
+        )
+
+        return {
+            "success": True,
+            "permission": {
+                "dataset_id": permission.dataset_id,
+                "user_id": permission.user_id,
+                "permission_level": permission.permission_level.value,
+                "granted_by": permission.granted_by,
+                "granted_at": permission.granted_at
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/permissions/revoke")
+async def revoke_permission(dataset_id: int, user_id: str):
+    """Revoke user's permission for a dataset"""
+    try:
+        permission_manager = get_permission_manager()
+        success = permission_manager.revoke_permission(dataset_id, user_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Permission not found")
+
+        return {
+            "success": True,
+            "message": f"Permission revoked for user {user_id} on dataset {dataset_id}"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/permissions/dataset/{dataset_id}")
+async def get_dataset_permissions(dataset_id: int):
+    """Get all permissions for a dataset"""
+    try:
+        permission_manager = get_permission_manager()
+        permissions = permission_manager.list_dataset_permissions(dataset_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "total": len(permissions),
+            "permissions": [
+                {
+                    "user_id": p.user_id,
+                    "permission_level": p.permission_level.value,
+                    "granted_by": p.granted_by,
+                    "granted_at": p.granted_at
+                }
+                for p in permissions
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/permissions/user/{user_id}")
+async def get_user_permissions(user_id: str):
+    """Get all permissions for a user"""
+    try:
+        permission_manager = get_permission_manager()
+        permissions = permission_manager.list_user_permissions(user_id)
+
+        return {
+            "user_id": user_id,
+            "total": len(permissions),
+            "permissions": [
+                {
+                    "dataset_id": p.dataset_id,
+                    "permission_level": p.permission_level.value,
+                    "granted_by": p.granted_by,
+                    "granted_at": p.granted_at
+                }
+                for p in permissions
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/permissions/share")
+async def share_dataset(request: ShareDatasetRequest):
+    """Share dataset with another user"""
+    try:
+        permission_manager = get_permission_manager()
+
+        # Parse permission level
+        try:
+            level = PermissionLevel(request.permission_level.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid permission level. Must be one of: {[p.value for p in PermissionLevel if p != PermissionLevel.OWNER]}"
+            )
+
+        # Don't allow sharing ownership
+        if level == PermissionLevel.OWNER:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot share ownership. Use transfer_ownership endpoint instead."
+            )
+
+        permission = permission_manager.share_dataset(
+            dataset_id=request.dataset_id,
+            from_user_id=request.from_user_id,
+            to_user_id=request.to_user_id,
+            permission_level=level
+        )
+
+        if not permission:
+            raise HTTPException(
+                status_code=403,
+                detail="Permission denied. Only owners can share datasets."
+            )
+
+        return {
+            "success": True,
+            "permission": {
+                "dataset_id": permission.dataset_id,
+                "user_id": permission.user_id,
+                "permission_level": permission.permission_level.value
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Comment Management Endpoints
+@app.post("/api/comments/create")
+async def create_comment(request: CommentCreateRequest):
+    """Create a comment on an example"""
+    try:
+        comment_manager = get_comment_manager()
+
+        comment = comment_manager.create_comment(
+            dataset_id=request.dataset_id,
+            example_id=request.example_id,
+            user_id=request.user_id,
+            content=request.content,
+            parent_comment_id=request.parent_comment_id
+        )
+
+        return {
+            "success": True,
+            "comment": {
+                "comment_id": comment.comment_id,
+                "dataset_id": comment.dataset_id,
+                "example_id": comment.example_id,
+                "user_id": comment.user_id,
+                "content": comment.content,
+                "created_at": comment.created_at,
+                "parent_comment_id": comment.parent_comment_id,
+                "resolved": comment.resolved
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/comments/list")
+async def list_comments(
+    dataset_id: Optional[int] = None,
+    example_id: Optional[int] = None,
+    user_id: Optional[str] = None
+):
+    """List comments with optional filters"""
+    try:
+        comment_manager = get_comment_manager()
+        comments = comment_manager.list_comments(
+            dataset_id=dataset_id,
+            example_id=example_id,
+            user_id=user_id
+        )
+
+        return {
+            "total": len(comments),
+            "comments": [
+                {
+                    "comment_id": c.comment_id,
+                    "dataset_id": c.dataset_id,
+                    "example_id": c.example_id,
+                    "user_id": c.user_id,
+                    "content": c.content,
+                    "created_at": c.created_at,
+                    "parent_comment_id": c.parent_comment_id,
+                    "resolved": c.resolved
+                }
+                for c in comments
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/comments/{comment_id}")
+async def get_comment(comment_id: str):
+    """Get comment by ID"""
+    try:
+        comment_manager = get_comment_manager()
+        comment = comment_manager.get_comment(comment_id)
+
+        if not comment:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        return {
+            "comment_id": comment.comment_id,
+            "dataset_id": comment.dataset_id,
+            "example_id": comment.example_id,
+            "user_id": comment.user_id,
+            "content": comment.content,
+            "created_at": comment.created_at,
+            "parent_comment_id": comment.parent_comment_id,
+            "resolved": comment.resolved
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/comments/{comment_id}")
+async def update_comment(comment_id: str, request: CommentUpdateRequest):
+    """Update comment content"""
+    try:
+        comment_manager = get_comment_manager()
+        success = comment_manager.update_comment(comment_id, request.content)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        return {"success": True, "message": "Comment updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/comments/{comment_id}")
+async def delete_comment(comment_id: str):
+    """Delete comment"""
+    try:
+        comment_manager = get_comment_manager()
+        success = comment_manager.delete_comment(comment_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        return {"success": True, "message": "Comment deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/comments/threads/{dataset_id}/{example_id}")
+async def get_example_threads(dataset_id: int, example_id: int):
+    """Get all comment threads for an example"""
+    try:
+        comment_manager = get_comment_manager()
+        threads = comment_manager.get_example_threads(dataset_id, example_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "example_id": example_id,
+            "thread_count": len(threads),
+            "threads": [
+                [
+                    {
+                        "comment_id": c.comment_id,
+                        "user_id": c.user_id,
+                        "content": c.content,
+                        "created_at": c.created_at,
+                        "resolved": c.resolved
+                    }
+                    for c in thread
+                ]
+                for thread in threads
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/comments/{comment_id}/resolve")
+async def resolve_comment_thread(comment_id: str):
+    """Mark a comment thread as resolved"""
+    try:
+        comment_manager = get_comment_manager()
+        success = comment_manager.resolve_thread(comment_id)
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Comment not found")
+
+        return {"success": True, "message": "Thread resolved"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Review Management Endpoints
+@app.post("/api/reviews/create")
+async def create_review(request: ReviewCreateRequest):
+    """Create a review for an example"""
+    try:
+        review_manager = get_review_manager()
+
+        # Parse status
+        try:
+            status = ReviewStatus(request.status.lower())
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status. Must be one of: {[s.value for s in ReviewStatus]}"
+            )
+
+        review = review_manager.create_review(
+            dataset_id=request.dataset_id,
+            example_id=request.example_id,
+            reviewer_id=request.reviewer_id,
+            status=status,
+            feedback=request.feedback
+        )
+
+        return {
+            "success": True,
+            "review": {
+                "review_id": review.review_id,
+                "dataset_id": review.dataset_id,
+                "example_id": review.example_id,
+                "reviewer_id": review.reviewer_id,
+                "status": review.status.value,
+                "feedback": review.feedback,
+                "created_at": review.created_at
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reviews/approve")
+async def approve_example(
+    dataset_id: int,
+    example_id: int,
+    reviewer_id: str,
+    feedback: Optional[str] = None
+):
+    """Approve an example"""
+    try:
+        review_manager = get_review_manager()
+
+        review = review_manager.approve_example(
+            dataset_id=dataset_id,
+            example_id=example_id,
+            reviewer_id=reviewer_id,
+            feedback=feedback
+        )
+
+        return {
+            "success": True,
+            "review": {
+                "review_id": review.review_id,
+                "status": review.status.value,
+                "created_at": review.created_at
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reviews/reject")
+async def reject_example(
+    dataset_id: int,
+    example_id: int,
+    reviewer_id: str,
+    feedback: str
+):
+    """Reject an example"""
+    try:
+        review_manager = get_review_manager()
+
+        review = review_manager.reject_example(
+            dataset_id=dataset_id,
+            example_id=example_id,
+            reviewer_id=reviewer_id,
+            feedback=feedback
+        )
+
+        return {
+            "success": True,
+            "review": {
+                "review_id": review.review_id,
+                "status": review.status.value,
+                "feedback": review.feedback,
+                "created_at": review.created_at
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reviews/request-changes")
+async def request_changes(
+    dataset_id: int,
+    example_id: int,
+    reviewer_id: str,
+    feedback: str
+):
+    """Request changes to an example"""
+    try:
+        review_manager = get_review_manager()
+
+        review = review_manager.request_changes(
+            dataset_id=dataset_id,
+            example_id=example_id,
+            reviewer_id=reviewer_id,
+            feedback=feedback
+        )
+
+        return {
+            "success": True,
+            "review": {
+                "review_id": review.review_id,
+                "status": review.status.value,
+                "feedback": review.feedback,
+                "created_at": review.created_at
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reviews/list")
+async def list_reviews(
+    dataset_id: Optional[int] = None,
+    reviewer_id: Optional[str] = None,
+    status: Optional[str] = None
+):
+    """List reviews with optional filters"""
+    try:
+        review_manager = get_review_manager()
+
+        # Parse status if provided
+        status_filter = None
+        if status:
+            try:
+                status_filter = ReviewStatus(status.lower())
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid status. Must be one of: {[s.value for s in ReviewStatus]}"
+                )
+
+        reviews = review_manager.list_reviews(
+            dataset_id=dataset_id,
+            reviewer_id=reviewer_id,
+            status=status_filter
+        )
+
+        return {
+            "total": len(reviews),
+            "reviews": [
+                {
+                    "review_id": r.review_id,
+                    "dataset_id": r.dataset_id,
+                    "example_id": r.example_id,
+                    "reviewer_id": r.reviewer_id,
+                    "status": r.status.value,
+                    "feedback": r.feedback,
+                    "created_at": r.created_at,
+                    "updated_at": r.updated_at
+                }
+                for r in reviews
+            ]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reviews/summary/{dataset_id}")
+async def get_review_summary(dataset_id: int):
+    """Get review summary for a dataset"""
+    try:
+        review_manager = get_review_manager()
+        summary = review_manager.get_review_summary(dataset_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "summary": summary
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reviews/pending/{dataset_id}")
+async def get_pending_reviews(dataset_id: int):
+    """Get list of example IDs pending review"""
+    try:
+        review_manager = get_review_manager()
+        pending_ids = review_manager.get_pending_reviews(dataset_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "pending_count": len(pending_ids),
+            "example_ids": pending_ids
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/reviews/approved/{dataset_id}")
+async def get_approved_examples(dataset_id: int):
+    """Get list of approved example IDs"""
+    try:
+        review_manager = get_review_manager()
+        approved_ids = review_manager.get_approved_examples(dataset_id)
+
+        return {
+            "dataset_id": dataset_id,
+            "approved_count": len(approved_ids),
+            "example_ids": approved_ids
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# DATA AUGMENTATION API ENDPOINTS
+# ============================================================================
+
+@app.post("/api/augmentation/augment")
+async def augment_dataset(request: AugmentationRequest):
+    """Augment a dataset with various techniques"""
+    try:
+        # Get dataset examples
+        dataset = db.get_dataset(request.dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+
+        examples = db.get_examples(request.dataset_id)
+        if not examples:
+            raise HTTPException(status_code=400, detail="Dataset has no examples")
+
+        # Create augmentation config
+        config = AugmentationConfig(
+            techniques=request.techniques,
+            samples_per_example=request.samples_per_example,
+            synonym_ratio=request.synonym_ratio,
+            random_swap_ratio=request.random_swap_ratio,
+            random_delete_ratio=request.random_delete_ratio,
+            random_insert_ratio=request.random_insert_ratio,
+            paraphrase_diversity=request.paraphrase_diversity
+        )
+
+        # Perform augmentation
+        augmenter = DataAugmenter(config)
+        result = augmenter.augment(
+            examples,
+            text_field=request.text_field
+        )
+
+        # Save augmented dataset if requested
+        new_dataset_id = None
+        if request.save_augmented:
+            # Create new dataset with augmented examples
+            new_dataset_id = db.create_dataset(
+                name=f"{dataset['name']}_augmented",
+                domain=dataset.get('domain', 'unknown'),
+                format=dataset.get('format', 'chat'),
+                example_count=result.total_count,
+                metadata={
+                    "source": "augmentation",
+                    "original_dataset_id": request.dataset_id,
+                    "augmentation_config": {
+                        "techniques": config.techniques,
+                        "samples_per_example": config.samples_per_example
+                    }
+                }
+            )
+
+            # Add augmented examples
+            db.add_examples(new_dataset_id, result.examples)
+
+        # Get statistics
+        stats = augmenter.get_statistics(result)
+
+        return {
+            "success": True,
+            "statistics": stats,
+            "new_dataset_id": new_dataset_id,
+            "message": f"Dataset augmented successfully. Created {result.augmented_count} new examples."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/augmentation/augment-text")
+async def augment_text(
+    text: str,
+    technique: str = "synonym",
+    synonym_ratio: float = 0.3
+):
+    """Augment a single text"""
+    try:
+        valid_techniques = ["synonym", "random", "paraphrase", "backtranslation"]
+        if technique not in valid_techniques:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid technique. Must be one of: {valid_techniques}"
+            )
+
+        config = AugmentationConfig(
+            techniques=[technique],
+            synonym_ratio=synonym_ratio
+        )
+
+        augmenter = DataAugmenter(config)
+        augmented_text = augmenter.augment_text(text, technique)
+
+        return {
+            "original": text,
+            "augmented": augmented_text,
+            "technique": technique
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/augmentation/techniques")
+async def get_augmentation_techniques():
+    """Get list of available augmentation techniques"""
+    return {
+        "techniques": [
+            {
+                "name": "synonym",
+                "description": "Replace words with synonyms",
+                "parameters": ["synonym_ratio"]
+            },
+            {
+                "name": "random",
+                "description": "Random word swap, deletion, and insertion",
+                "parameters": ["random_swap_ratio", "random_delete_ratio", "random_insert_ratio"]
+            },
+            {
+                "name": "paraphrase",
+                "description": "Paraphrase text using pattern matching",
+                "parameters": ["paraphrase_diversity"]
+            },
+            {
+                "name": "backtranslation",
+                "description": "Back-translation simulation",
+                "parameters": []
+            }
+        ]
+    }
+
+@app.post("/api/augmentation/preview")
+async def preview_augmentation(
+    dataset_id: int,
+    techniques: List[str] = ["synonym"],
+    samples: int = 5,
+    text_field: str = "text"
+):
+    """Preview augmentation on sample examples"""
+    try:
+        # Get sample examples
+        examples = db.get_examples(dataset_id, limit=samples)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        config = AugmentationConfig(
+            techniques=techniques,
+            samples_per_example=1
+        )
+
+        augmenter = DataAugmenter(config)
+
+        previews = []
+        for example in examples:
+            original_text = example.get(text_field, "")
+            augmented_text = augmenter.augment_text(original_text)
+
+            previews.append({
+                "original": original_text,
+                "augmented": augmented_text,
+                "technique": techniques[0] if techniques else "unknown"
+            })
+
+        return {
+            "dataset_id": dataset_id,
+            "samples": len(previews),
+            "previews": previews
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
