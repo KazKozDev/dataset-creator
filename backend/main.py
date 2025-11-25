@@ -19,19 +19,31 @@ from contextlib import asynccontextmanager
 
 import database as db
 from domains import DOMAINS, get_domains, get_domain, get_subdomain, get_common_params
-from llm_providers import create_provider, get_provider_types
+from llm_providers import (
+    get_provider,
+    get_default_provider,
+    list_available_providers,
+    get_provider_models,
+    test_provider_availability,
+    ProviderRegistry
+)
 import generator
 import quality
 import utils
+from config import get_config, reload_config
 
 # Initialize FastAPI app
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events handler"""
+    # Load configuration
+    config = get_config()
+    config.ensure_directories()
+
     # Initialize database
     db.init_db()
     db.ensure_data_dir()
-    
+
     # Scan for datasets
     datasets = utils.scan_for_datasets()
     for file_path in datasets:
@@ -86,14 +98,10 @@ app.add_middleware(
 # Initialize database
 db.initialize()
 
-# Create LLM provider based on environment variables or config
-DEFAULT_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama")
-DEFAULT_MODEL = os.environ.get("LLM_MODEL", "gemma3:27b")
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Global configuration instance
+config = get_config()
 
-# Global LLM provider instance
+# Global LLM provider instance (lazy-loaded)
 llm_provider = None
 
 # Pydantic models for request/response validation
@@ -123,34 +131,45 @@ class ProviderConfig(BaseModel):
     base_url: Optional[str] = None
 
 # Helper function to get or create LLM provider
-def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, api_key: Optional[str] = None, base_url: Optional[str] = None):
-    """Get or create LLM provider"""
+def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, **kwargs):
+    """
+    Get or create LLM provider using configuration system
+
+    Args:
+        provider_type: Name of the provider (ollama, openai, anthropic)
+        model: Model name to use (overrides config default)
+        **kwargs: Additional parameters to override config
+
+    Returns:
+        LLMProvider instance
+    """
     global llm_provider
-    
+
+    # Build override parameters
+    override_params = {}
+    if model:
+        override_params['model'] = model
+    override_params.update(kwargs)
+
     # Use existing provider if no changes
-    if llm_provider and not (provider_type or model or api_key or base_url):
+    if llm_provider and not (provider_type or override_params):
         return llm_provider
-    
-    # Use defaults if not specified
-    provider_type = provider_type or DEFAULT_PROVIDER
-    
-    # Create provider based on type
-    if provider_type.lower() == "ollama":
-        model = model or DEFAULT_MODEL
-        base_url = base_url or OLLAMA_URL
-        llm_provider = create_provider("ollama", model=model, base_url=base_url)
-    elif provider_type.lower() == "openai":
-        model = model or "gpt-4"
-        api_key = api_key or OPENAI_API_KEY
-        llm_provider = create_provider("openai", model=model, api_key=api_key)
-    elif provider_type.lower() == "anthropic":
-        model = model or "claude-3-7-sonnet-20250219"
-        api_key = api_key or ANTHROPIC_API_KEY
-        llm_provider = create_provider("anthropic", model=model, api_key=api_key)
-    else:
-        raise ValueError(f"Unsupported provider type: {provider_type}")
-    
-    return llm_provider
+
+    # Create or get provider
+    try:
+        if override_params:
+            llm_provider = get_provider(provider_type, **override_params)
+        else:
+            llm_provider = get_provider(provider_type)
+        return llm_provider
+    except Exception as e:
+        print(f"Error creating provider: {e}")
+        # Fallback to default provider if specified one fails
+        if provider_type:
+            print(f"Falling back to default provider")
+            llm_provider = get_default_provider()
+            return llm_provider
+        raise
 
 # API Routes
 @app.get("/")
@@ -199,8 +218,24 @@ async def get_common_parameters():
 # LLM provider routes
 @app.get("/api/providers")
 async def list_providers():
-    """List available LLM providers"""
-    return {"providers": get_provider_types()}
+    """List available LLM providers from configuration"""
+    try:
+        providers = list_available_providers()
+        return {
+            "providers": [
+                {
+                    "name": name,
+                    "enabled": config.get("enabled", True),
+                    "description": config.get("description", ""),
+                    "default_model": config.get("default_model", ""),
+                    "available_models": config.get("available_models", [])
+                }
+                for name, config in providers.items()
+            ],
+            "default_provider": get_config().get_default_provider()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/providers/config")
 async def set_provider_config(config: ProviderConfig):
@@ -226,15 +261,104 @@ async def list_models(provider: Optional[str] = Query(None)):
     """List available models for a provider"""
     try:
         # Use specified provider or default
-        provider_type = provider or DEFAULT_PROVIDER
-        
-        # Create provider and get models
-        provider = get_llm_provider(provider_type=provider_type)
-        models = provider.get_models()
-        
-        return {"provider": provider_type, "models": models}
+        provider_name = provider or config.get_default_provider()
+
+        # Get models from provider
+        models = get_provider_models(provider_name)
+
+        # Also get configured models from config
+        provider_config = config.get_provider_config(provider_name)
+        configured_models = provider_config.get("available_models", []) if provider_config else []
+
+        return {
+            "provider": provider_name,
+            "models": models if models else configured_models,
+            "configured_models": configured_models
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/providers/{provider_name}/status")
+async def check_provider_status(provider_name: str):
+    """Check if a provider is available and working"""
+    try:
+        is_available = test_provider_availability(provider_name)
+        provider_config = config.get_provider_config(provider_name)
+
+        return {
+            "provider": provider_name,
+            "available": is_available,
+            "enabled": provider_config.get("enabled", False) if provider_config else False,
+            "default_model": provider_config.get("default_model", "") if provider_config else ""
+        }
+    except Exception as e:
+        return {
+            "provider": provider_name,
+            "available": False,
+            "error": str(e)
+        }
+
+@app.post("/api/providers/{provider_name}/enable")
+async def enable_provider(provider_name: str):
+    """Enable a provider"""
+    try:
+        provider_config = config.get_provider_config(provider_name)
+        if not provider_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        config.update_provider_config(provider_name, {"enabled": True})
+        config.save_config()
+
+        return {"status": "success", "provider": provider_name, "enabled": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/providers/{provider_name}/disable")
+async def disable_provider(provider_name: str):
+    """Disable a provider"""
+    try:
+        provider_config = config.get_provider_config(provider_name)
+        if not provider_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        config.update_provider_config(provider_name, {"enabled": False})
+        config.save_config()
+
+        # Clear provider cache
+        ProviderRegistry.clear_cache()
+
+        return {"status": "success", "provider": provider_name, "enabled": False}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.put("/api/providers/{provider_name}/config")
+async def update_provider_configuration(provider_name: str, provider_config: Dict[str, Any] = Body(...)):
+    """Update provider configuration"""
+    try:
+        current_config = config.get_provider_config(provider_name)
+        if not current_config:
+            raise HTTPException(status_code=404, detail=f"Provider '{provider_name}' not found")
+
+        # Update configuration
+        config.update_provider_config(provider_name, provider_config)
+        config.save_config()
+
+        # Clear provider cache to force recreation
+        ProviderRegistry.clear_cache()
+
+        return {"status": "success", "provider": provider_name, "config": config.get_provider_config(provider_name)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/config/reload")
+async def reload_configuration():
+    """Reload configuration from file"""
+    try:
+        reload_config()
+        ProviderRegistry.clear_cache()
+        return {"status": "success", "message": "Configuration reloaded"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Generator routes
 @app.post("/api/generator/start")
