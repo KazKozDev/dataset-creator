@@ -1,0 +1,100 @@
+metadata:
+  name: tech_support
+  version: 1.0.0
+  author: AI Team
+  description: Template for generating technical support conversations
+  tags:
+    - support
+    - technical
+    - troubleshooting
+  domain: support
+  subdomain: tech_support
+  created_at: 2025-11-25T00:00:00
+  updated_at: 2025-11-25T00:00:00
+
+variables:
+  - name: product_type
+    type: enum
+    description: Type of product requiring support
+    required: true
+    enum_values:
+      - software
+      - hardware
+      - service
+      - mobile_app
+      - web_platform
+
+  - name: complexity
+    type: enum
+    description: Issue complexity level
+    required: false
+    default: medium
+    enum_values:
+      - simple
+      - medium
+      - complex
+
+  - name: customer_sentiment
+    type: enum
+    description: Customer's emotional state
+    required: false
+    default: neutral
+    enum_values:
+      - frustrated
+      - neutral
+      - patient
+      - urgent
+
+  - name: num_turns
+    type: integer
+    description: Number of conversation turns to generate
+    required: false
+    default: 6
+    min_value: 2
+    max_value: 20
+
+system_prompt: |
+  You are an expert at generating realistic technical support conversations.
+  Create natural, helpful dialogues between support agents and customers.
+  The conversations should be professional, empathetic, and technically accurate.
+
+user_prompt: |
+  Generate a realistic technical support conversation with the following parameters:
+
+  Product Type: {{product_type}}
+  Issue Complexity: {{complexity}}
+  Customer Sentiment: {{customer_sentiment}}
+  Number of Turns: {{num_turns}}
+
+  Requirements:
+  1. Create a natural conversation flow between customer and support agent
+  2. Include a clear problem statement from the customer
+  3. Agent should ask relevant diagnostic questions
+  4. Provide step-by-step troubleshooting
+  5. Resolve the issue or escalate appropriately
+  6. Maintain the specified customer sentiment throughout
+  7. Match the complexity level in technical depth
+
+  Format the conversation as:
+  Customer: [message]
+  Agent: [message]
+
+  Generate a complete, realistic conversation now:
+
+examples:
+  - input:
+      product_type: software
+      complexity: simple
+      customer_sentiment: neutral
+      num_turns: 4
+    output: |
+      Customer: Hi, I'm having trouble logging into my account. It says my password is incorrect but I'm sure it's right.
+      Agent: Hello! I'd be happy to help you with that. Can you tell me if you've recently changed your password or if this is the first time you're experiencing this issue?
+      Customer: I haven't changed it recently. It was working fine yesterday.
+      Agent: I understand. Let's try resetting your password. I'm sending you a password reset link to your registered email. Please check your inbox and spam folder. Once you receive it, click the link and create a new password. This should resolve the issue.
+      Customer: Got it, I'll do that. Thanks for your help!
+      Agent: You're welcome! If you have any other issues after resetting your password, feel free to reach out. Have a great day!
+
+temperature: 0.7
+max_tokens: 2000
+stop_sequences: []
