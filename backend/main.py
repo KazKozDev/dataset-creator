@@ -32,7 +32,7 @@ import quality
 import utils
 from config import get_config, reload_config
 from prompts import get_manager, PromptValidator, ValidationError
-from exporters import HuggingFaceExporter, OpenAIExporter
+from exporters import HuggingFaceExporter, OpenAIExporter, AlpacaExporter, LangChainExporter
 from analytics import get_tracker, DatasetStats
 
 # Initialize FastAPI app
@@ -847,10 +847,63 @@ async def export_dataset(request: ExportRequest, background_tasks: BackgroundTas
                 "train_split": request.train_split
             }
 
+        elif request.format.lower() in ["alpaca", "sharegpt"]:
+            exporter = AlpacaExporter()
+            format_type = request.format.lower()
+
+            def export_task():
+                try:
+                    output_path = exporter.export(
+                        examples=examples,
+                        output_filename=request.output_filename,
+                        format_type=format_type,
+                        **request.additional_params
+                    )
+                    db.update_dataset(request.dataset_id, {"last_export": datetime.now().isoformat()})
+                    print(f"{format_type.capitalize()} export completed: {output_path}")
+                except Exception as e:
+                    print(f"Export error: {e}")
+
+            background_tasks.add_task(export_task)
+
+            return {
+                "status": "exporting",
+                "dataset_id": request.dataset_id,
+                "format": format_type,
+                "output_filename": request.output_filename
+            }
+
+        elif request.format.lower() == "langchain":
+            exporter = LangChainExporter()
+            export_type = request.additional_params.get("export_type", "documents")
+
+            def export_task():
+                try:
+                    output_path = exporter.export(
+                        examples=examples,
+                        output_filename=request.output_filename,
+                        export_type=export_type,
+                        **request.additional_params
+                    )
+                    db.update_dataset(request.dataset_id, {"last_export": datetime.now().isoformat()})
+                    print(f"LangChain export completed: {output_path}")
+                except Exception as e:
+                    print(f"Export error: {e}")
+
+            background_tasks.add_task(export_task)
+
+            return {
+                "status": "exporting",
+                "dataset_id": request.dataset_id,
+                "format": "langchain",
+                "export_type": export_type,
+                "output_filename": request.output_filename
+            }
+
         else:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported export format: {request.format}. Supported: huggingface, openai"
+                detail=f"Unsupported export format: {request.format}. Supported: huggingface, openai, alpaca, sharegpt, langchain"
             )
 
     except HTTPException:
@@ -867,19 +920,43 @@ async def list_export_formats():
                 "name": "huggingface",
                 "description": "HuggingFace datasets format with metadata",
                 "file_extension": "directory with JSONL",
-                "features": ["dataset_info.json", "README.md", "push to hub script"]
+                "features": ["dataset_info.json", "README.md", "push to hub script"],
+                "use_cases": ["Upload to HuggingFace Hub", "Share datasets publicly"]
             },
             {
                 "name": "openai",
                 "description": "OpenAI fine-tuning format (JSONL)",
                 "file_extension": ".jsonl",
-                "features": ["chat format", "train/val split", "validation report"]
+                "features": ["chat format", "train/val split", "validation report", "cost estimation"],
+                "use_cases": ["Fine-tune GPT-3.5/GPT-4", "OpenAI API training"]
+            },
+            {
+                "name": "alpaca",
+                "description": "Alpaca instruction format (JSON)",
+                "file_extension": ".json",
+                "features": ["instruction-input-output structure", "compatible with FastChat"],
+                "use_cases": ["Instruction tuning", "Fine-tune LLaMA/Alpaca models"]
+            },
+            {
+                "name": "sharegpt",
+                "description": "ShareGPT conversation format (JSON)",
+                "file_extension": ".json",
+                "features": ["human-gpt conversation structure", "multi-turn dialogues"],
+                "use_cases": ["Chat model training", "Vicuna/ShareGPT format"]
+            },
+            {
+                "name": "langchain",
+                "description": "LangChain document format (JSONL)",
+                "file_extension": ".jsonl",
+                "features": ["documents/chat/qa_pairs modes", "vector store ready", "loader scripts"],
+                "use_cases": ["RAG systems", "Vector databases", "LangChain applications"]
             },
             {
                 "name": "csv",
                 "description": "CSV format for general use",
                 "file_extension": ".csv",
-                "features": ["spreadsheet compatible"]
+                "features": ["spreadsheet compatible", "universal format"],
+                "use_cases": ["Data analysis", "Excel/Sheets", "General purpose"]
             }
         ]
     }
