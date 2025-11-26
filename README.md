@@ -1,6 +1,11 @@
-# Synthetic Data Foundry
 
-Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestration, quality control, and multiple export formats.
+<div align="center">
+  <img width="400" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
+  <p>
+   <br> Synthetic dataset generator for fine-tuning LLMs.<br>
+    Supports multi-agent orchestration, quality control, and multiple export formats.
+  </p>
+</div>
 
 ## Who Is This For
 
@@ -54,6 +59,8 @@ MISTRAL_API_KEY=...
 For local inference, install [Ollama](https://ollama.ai) and pull any model. The app auto-detects your installed models — choose what fits your hardware.
 
 ## Multi-Agent Modes
+
+Multi-agent orchestration system for generating high-quality synthetic datasets.
 
 | Mode | Agents | Best For |
 |------|--------|----------|
