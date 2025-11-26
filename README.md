@@ -12,17 +12,10 @@ Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestra
 ## Features
 
 - **12+ Domains**: support, medical, legal, education, business, technical, sales, financial, research, coaching, creative, meetings, ecommerce
-- **Multi-Agent Orchestration**: 4 generation modes for different use cases
+- **Multi-Agent Orchestration**: 4 generation methods for different use cases
 - **Quality Control**: Toxicity detection, PII filtering, deduplication, diversity analysis
 - **Export Formats**: HuggingFace, OpenAI, Alpaca, LangChain
 - **Versioning**: Dataset diff, merge, version history
-- **Collaboration**: Users, roles, permissions, review workflows
-
-## Tech Stack
-
-- **Backend**: FastAPI, SQLite, Python 3.9+
-- **Frontend**: React 18, Chakra UI
-- **LLM Providers**: Ollama (local), OpenAI, Anthropic, Google, Mistral
 
 ## Quick Start
 
@@ -31,8 +24,6 @@ Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestra
 cp .env.example .env
 docker-compose up --build
 ```
-
-**macOS:** Double-click `restart_app.command` — kills old processes, starts backend + frontend, opens browser.
 
 **Manual:**
 ```bash
@@ -46,6 +37,8 @@ cd frontend && npm start
 ```
 
 Open http://localhost:3000
+
+**macOS:** Double-click `restart_app.command` — kills old processes, starts backend + frontend, opens browser.
 
 ## Configuration
 
