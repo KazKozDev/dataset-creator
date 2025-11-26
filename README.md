@@ -64,24 +64,6 @@ For local inference, install [Ollama](https://ollama.ai) and pull any model. The
 
 See [AGENTS.md](AGENTS.md) for details.
 
-## Project Structure
-
-```
-backend/
-  main.py           # FastAPI app
-  generator.py      # Dataset generation
-  quality.py        # Quality control
-  domains.py        # Domain definitions
-  llm_providers.py  # LLM integrations
-  agents/           # Multi-agent orchestration
-  exporters/        # Export formats
-  quality_advanced/ # Toxicity, dedup, diversity
-  versioning/       # Diff, merge
-  collaboration/    # Users, permissions
-frontend/
-  src/components/   # React components
-```
-
 ## API
 
 Base URL: `http://localhost:8000`
@@ -94,6 +76,10 @@ Base URL: `http://localhost:8000`
 
 Full API docs: http://localhost:8000/docs
 
-## License
+---
 
-MIT
+If you like this project, please give it a star ⭐
+
+For questions, feedback, or support, reach out to:
+
+[Artem KK](https://www.linkedin.com/in/kazkozdev/) | MIT [LICENSE](LICENSE)
