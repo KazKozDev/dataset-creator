@@ -49,6 +49,9 @@ class EventType(Enum):
     COMPLETE = "complete"
     ERROR = "error"
     METADATA = "metadata"
+    MESSAGE = "message"  # Inter-agent communication
+    LLM_REQUEST = "llm_request"  # Prompt sent to LLM
+    LLM_RESPONSE = "llm_response"  # Response from LLM
 
 @dataclass
 class AgentEvent:
@@ -190,6 +193,33 @@ class BaseAgent:
     async def metadata(self, metadata: Dict[str, Any]):
         """Emit metadata (tokens, cost, etc.)"""
         await self.emit_event(EventType.METADATA, metadata)
+        
+    async def send_message(self, to_role: str, message: str, data: Optional[Dict] = None):
+        """Send a message to another agent (for UI visibility)"""
+        await self.emit_event(EventType.MESSAGE, {
+            "from": self.role.value,
+            "to": to_role,
+            "message": message,
+            "data": data or {}
+        })
+        
+    async def log_llm_request(self, prompt: str, params: Optional[Dict] = None):
+        """Log LLM request (prompt) for debugging"""
+        await self.emit_event(EventType.LLM_REQUEST, {
+            "prompt": prompt,
+            "provider": self.llm_provider,
+            "model": self.llm_model,
+            "params": params or {}
+        })
+        
+    async def log_llm_response(self, response: str, tokens: Optional[int] = None):
+        """Log LLM response for debugging"""
+        await self.emit_event(EventType.LLM_RESPONSE, {
+            "response": response,
+            "tokens": tokens,
+            "provider": self.llm_provider,
+            "model": self.llm_model
+        })
         
     async def generate(self, prompt: str, **kwargs) -> str:
         """

@@ -329,13 +329,15 @@ class EvolutionaryGeneFusion:
                 # Select elite
                 elite = await self._select_elite(population)
                 
-                # Mutation
+                # Mutation phase
+                await mutagen.send_message("crossover", f"Gen {generation+1}: Mutating {len(population)} individuals", {"generation": generation+1})
                 mutated = await mutagen.run({
                     "examples": population,
                     "mutation_rate": self.mutation_rate
                 })
                 
-                # Crossover
+                # Crossover phase
+                await crossover.send_message("mutagen", f"Gen {generation+1}: Crossing {len(mutated)} mutants", {"generation": generation+1})
                 offspring = await crossover.run({
                     "examples": mutated,
                     "crossover_rate": self.crossover_rate

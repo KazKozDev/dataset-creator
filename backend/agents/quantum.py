@@ -523,6 +523,7 @@ class QuantumFieldOrchestration:
             
             # === STEP 1: GAUGE - Create superposition (multiple approaches per example) ===
             print("\n=== GAUGE: Creating Superposition ===")
+            await gauge.send_message("fermion", f"Creating superposition: {requested_count} topics × {superposition_n} approaches", {"count": requested_count, "variants": superposition_n})
             approaches = await gauge.run({
                 "count": requested_count,
                 "superposition_n": superposition_n,
@@ -533,31 +534,38 @@ class QuantumFieldOrchestration:
             
             # === STEP 2: FERMION - Generate Q&A for each approach (batch per example) ===
             print("\n=== FERMION: Generating Q&A Variants ===")
+            await fermion.send_message("gauge", f"Received {len(approaches)} approaches, generating Q&A pairs", {"approaches": len(approaches)})
             fermions = await fermion.run({
                 "fields": approaches,
                 "domain": domain
             })
+            await fermion.send_message("higgs", f"Generated {len(fermions)} Q&A variants for evaluation", {"fermions": len(fermions)})
             print(f"  Generated {len(fermions)} Q&A pairs")
             
             # === STEP 3: HIGGS - Evaluate and select best variant per example ===
             print("\n=== HIGGS: Selecting Best Variants (Collapse) ===")
+            await higgs.send_message("fermion", f"Evaluating {len(fermions)} variants, will collapse to best", {"variants": len(fermions)})
             selected = await higgs.run({
                 "fermions": fermions,
                 "domain": domain
             })
+            await higgs.send_message("yukawa", f"Collapsed to {len(selected)} best variants", {"selected": len(selected)})
             print(f"  Selected {len(selected)} best variants")
             
             # === STEP 4: YUKAWA - Enhance selected with improvements (if needed) ===
             print("\n=== YUKAWA: Enhancing Selected ===")
+            await yukawa.send_message("higgs", f"Enhancing {len(selected)} selected examples", {"count": len(selected)})
             enhanced = await yukawa.run({
                 "selected": selected,
                 "all_variants": fermions,
                 "domain": domain
             })
+            await yukawa.send_message("potential", f"Enhanced {len(enhanced)} examples, ready for formatting", {"enhanced": len(enhanced)})
             print(f"  Enhanced {len(enhanced)} examples")
             
             # === STEP 5: POTENTIAL - Final collapse to output format ===
             print("\n=== POTENTIAL: Final Collapse ===")
+            await potential.send_message("all", f"Final collapse: formatting {len(enhanced)} examples", {"count": len(enhanced)})
             final = await potential.run({
                 "enhanced": enhanced,
                 "domain": domain,

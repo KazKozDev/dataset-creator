@@ -45,6 +45,8 @@ import {
     FiAlertCircle,
     FiTool,
     FiGrid,
+    FiMessageCircle,
+    FiArrowRight,
 } from 'react-icons/fi';
 
 const AgentMonitor = ({ jobId, onComplete }) => {
@@ -168,6 +170,9 @@ const AgentMonitor = ({ jobId, onComplete }) => {
             complete: 'teal',
             error: 'red',
             metadata: 'gray',
+            message: 'orange',
+            llm_request: 'yellow',
+            llm_response: 'green',
         };
         return colors[eventType] || 'gray';
     };
@@ -277,8 +282,71 @@ const AgentMonitor = ({ jobId, onComplete }) => {
                                         </Code>
                                     )}
 
-                                    {event.data?.message && (
+                                    {event.data?.message && event.event_type !== 'message' && (
                                         <Text fontSize="sm">{event.data.message}</Text>
+                                    )}
+
+                                    {/* Inter-agent message */}
+                                    {event.event_type === 'message' && (
+                                        <HStack spacing={2} mt={1}>
+                                            <Icon as={FiMessageCircle} color="orange.500" boxSize={4} />
+                                            <Badge colorScheme="orange" fontSize="xs">{event.data?.from}</Badge>
+                                            <Icon as={FiArrowRight} color="gray.400" boxSize={3} />
+                                            <Badge colorScheme="blue" fontSize="xs">{event.data?.to}</Badge>
+                                            <Text fontSize="sm" fontWeight="medium" color="orange.600">
+                                                {event.data?.message}
+                                            </Text>
+                                        </HStack>
+                                    )}
+
+                                    {/* LLM Request - show prompt */}
+                                    {event.event_type === 'llm_request' && (
+                                        <Box mt={2}>
+                                            <HStack spacing={2} mb={1}>
+                                                <Badge colorScheme="yellow" fontSize="xs">→ LLM</Badge>
+                                                <Text fontSize="xs" color="gray.500">
+                                                    {event.data?.provider}/{event.data?.model}
+                                                </Text>
+                                            </HStack>
+                                            <Code
+                                                fontSize="xs"
+                                                p={2}
+                                                borderRadius="md"
+                                                display="block"
+                                                whiteSpace="pre-wrap"
+                                                bg="yellow.50"
+                                                maxH="200px"
+                                                overflowY="auto"
+                                            >
+                                                {event.data?.prompt?.substring(0, 500)}
+                                                {event.data?.prompt?.length > 500 && '...'}
+                                            </Code>
+                                        </Box>
+                                    )}
+
+                                    {/* LLM Response - show response */}
+                                    {event.event_type === 'llm_response' && (
+                                        <Box mt={2}>
+                                            <HStack spacing={2} mb={1}>
+                                                <Badge colorScheme="green" fontSize="xs">← LLM</Badge>
+                                                <Text fontSize="xs" color="gray.500">
+                                                    {event.data?.provider}/{event.data?.model}
+                                                </Text>
+                                            </HStack>
+                                            <Code
+                                                fontSize="xs"
+                                                p={2}
+                                                borderRadius="md"
+                                                display="block"
+                                                whiteSpace="pre-wrap"
+                                                bg="green.50"
+                                                maxH="200px"
+                                                overflowY="auto"
+                                            >
+                                                {event.data?.response?.substring(0, 500)}
+                                                {event.data?.response?.length > 500 && '...'}
+                                            </Code>
+                                        </Box>
                                     )}
                                 </Box>
                             ))}

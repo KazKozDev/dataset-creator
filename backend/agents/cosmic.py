@@ -395,21 +395,25 @@ class CosmicBurstSynthesis:
                 # Generate seed
                 seed = await self._generate_seed(task)
                 
-                # Explode
+                # Explode phase
+                await exploder.send_message("cooler", f"Burst {iteration+1}: Exploding seed into {self.expansion_factor} variations", {"burst": iteration+1})
                 variations = await exploder.run({
                     "seed": seed,
                     "expansion_factor": self.expansion_factor
                 })
                 
-                # Cool down
+                # Cool down phase
+                await cooler.send_message("exploder", f"Burst {iteration+1}: Cooling {len(variations)} hot variations", {"burst": iteration+1, "count": len(variations)})
                 stable = await cooler.run({
                     "examples": variations,
                     "temperature_threshold": self.temperature_threshold
                 })
                 
+                await cooler.send_message("synthesizer", f"Burst {iteration+1}: {len(stable)} stable examples ready", {"burst": iteration+1, "stable": len(stable)})
                 all_stable.extend(stable)
                 
             # Synthesize final
+            await synthesizer.send_message("all", f"Final synthesis: polishing {len(all_stable)} examples", {"total": len(all_stable)})
             final = await synthesizer.run({
                 "examples": all_stable,
                 "target_count": task.get("count", 50)

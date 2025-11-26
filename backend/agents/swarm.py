@@ -107,7 +107,13 @@ class ScoutAgent(BaseAgent):
             prompt = generator.get_prompt_in_language(scenario, format_type, language, custom_template)
             
             try:
+                # Log the prompt being sent to LLM
+                await self.log_llm_request(prompt, {"temperature": self.temperature})
+                
                 result = await self.generate(prompt)
+                
+                # Log the response
+                await self.log_llm_response(result)
                 
                 # Parse JSON
                 try:
@@ -207,12 +213,18 @@ Return JSON only:
 {{"overall_score": 0.0-1.0, "issues": ["list of problems"], "strengths": ["list of strengths"]}}"""
 
             try:
+                # Log the evaluation prompt
+                await self.log_llm_request(prompt, {"temperature": 0.3})
+                
                 loop = asyncio.get_event_loop()
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     result = await loop.run_in_executor(
                         executor,
                         lambda: provider.generate_text(prompt, temperature=0.3)
                     )
+                
+                # Log the response
+                await self.log_llm_response(result)
                 
                 # Parse score
                 json_str = result
@@ -311,12 +323,18 @@ Return the mutated example as JSON with the same structure:
 {{"messages": [...], "metadata": {{...}}}}"""
 
                 try:
+                    # Log mutation prompt
+                    await self.log_llm_request(prompt, {"temperature": 0.8, "mutation_type": mutation_type})
+                    
                     loop = asyncio.get_event_loop()
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         result = await loop.run_in_executor(
                             executor,
                             lambda: provider.generate_text(prompt, temperature=0.8)
                         )
+                    
+                    # Log response
+                    await self.log_llm_response(result)
                     
                     # Parse JSON
                     json_str = result
@@ -413,12 +431,18 @@ Return JSON with indices to KEEP (most diverse, high quality):
 Select up to {target_count} diverse examples."""
 
                 try:
+                    # Log diversity check prompt
+                    await self.log_llm_request(prompt, {"temperature": 0.3})
+                    
                     loop = asyncio.get_event_loop()
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         result = await loop.run_in_executor(
                             executor,
                             lambda: provider.generate_text(prompt, temperature=0.3)
                         )
+                    
+                    # Log response
+                    await self.log_llm_response(result)
                     
                     # Parse indices
                     if "{" in result:
@@ -543,6 +567,10 @@ class HybridSwarmSynthesis:
                 count_per_scout = max(1, total_count // self.num_scouts)
                 print(f"[Swarm] Each scout will generate {count_per_scout} examples")
                 
+                # Announce phase to UI
+                for scout in scouts:
+                    await scout.send_message("gatherer", f"Starting exploration, will generate {count_per_scout} examples", {"phase": "scout", "count": count_per_scout})
+                
                 scout_tasks = [
                     scout.run({
                         **task,
@@ -565,6 +593,9 @@ class HybridSwarmSynthesis:
                 
                 # Phase 2: Gatherers evaluate
                 if scout_examples:
+                    # Announce handoff
+                    for gatherer in gatherers:
+                        await gatherer.send_message("scout", f"Received {len(scout_examples)} examples for evaluation", {"phase": "gather", "count": len(scout_examples)})
                     gatherer_tasks = [
                         gatherer.run({
                             "examples": scout_examples[i::self.num_gatherers],
@@ -580,12 +611,19 @@ class HybridSwarmSynthesis:
                         else:
                             selected_examples.extend(result)
                     print(f"[Swarm] Gatherers selected {len(selected_examples)} examples")
+                    
+                    # Report to mutators
+                    for gatherer in gatherers:
+                        await gatherer.send_message("mutator", f"Passed {len(selected_examples)} quality examples", {"phase": "gather_done", "passed": len(selected_examples)})
                 else:
                     selected_examples = []
                     print("[Swarm] No examples to evaluate")
                 
                 # Phase 3: Mutators create variations
                 if iteration < self.iterations - 1 and selected_examples:
+                    # Announce mutation phase
+                    for mutator in mutators:
+                        await mutator.send_message("gatherer", f"Creating variations of {len(selected_examples)} examples", {"phase": "mutate"})
                     mutator_tasks = [
                         mutator.run({
                             "examples": selected_examples[i::self.num_mutators],
@@ -601,11 +639,16 @@ class HybridSwarmSynthesis:
                         else:
                             mutated_examples.extend(result)
                     print(f"[Swarm] Mutators created {len(mutated_examples)} variations")
+                    
+                    # Report to selector
+                    for mutator in mutators:
+                        await mutator.send_message("selector", f"Created {len(mutated_examples)} variations", {"phase": "mutate_done", "count": len(mutated_examples)})
                     all_examples.extend(mutated_examples)
                 else:
                     all_examples.extend(selected_examples)
                     
             # Phase 4: Final selection
+            await selector.send_message("all", f"Starting final selection from {len(all_examples)} candidates", {"phase": "select", "candidates": len(all_examples)})
             final_examples = await selector.run({
                 "examples": all_examples,
                 "target_count": task.get("count", 50)
