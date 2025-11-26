@@ -32,45 +32,32 @@ Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestra
 - **Frontend**: React 18, Chakra UI
 - **LLM Providers**: Ollama (local), OpenAI, Anthropic, Google, Mistral
 
-## Quick Start (Docker)
+## Quick Start
 
+**Docker:**
 ```bash
-cp .env.example .env  # Add API keys
+cp .env.example .env
 docker-compose up --build
 ```
 
-Open http://localhost:3000
+**macOS:** Double-click `restart_app.command` — kills old processes, starts backend + frontend, opens browser.
 
-## Manual Installation
-
+**Manual:**
 ```bash
-# Backend
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
-cp .env.example .env
+cd frontend && npm install
 
-# Frontend
-cd frontend
-npm install
-```
-
-## Usage
-
-```bash
-# Terminal 1
-cd backend
-uvicorn main:app --reload --port 8000
-
-# Terminal 2
-cd frontend
-npm start
+# Run
+cd backend && uvicorn main:app --reload --port 8000
+cd frontend && npm start
 ```
 
 Open http://localhost:3000
 
 ## Configuration
 
-Set API keys in `backend/.env`:
+Set API keys in `.env` (optional — for cloud providers):
 
 ```
 OPENAI_API_KEY=sk-...
@@ -79,11 +66,7 @@ GOOGLE_API_KEY=...
 MISTRAL_API_KEY=...
 ```
 
-For local inference, install [Ollama](https://ollama.ai) and pull a model:
-
-```bash
-ollama pull llama3.2
-```
+For local inference, install [Ollama](https://ollama.ai) and pull any model. The app auto-detects your installed models — choose what fits your hardware.
 
 ## Domains
 
