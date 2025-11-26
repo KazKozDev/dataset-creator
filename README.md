@@ -1,4 +1,4 @@
-# LLM Dataset Creator
+# Synthetic Data Foundry
 
 Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestration, quality control, and multiple export formats.
 
