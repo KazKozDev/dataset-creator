@@ -22,6 +22,8 @@
 - **Export Formats**: HuggingFace, OpenAI, Alpaca, LangChain
 - **Versioning**: Dataset diff, merge, version history
 
+<img width="1379" height="947" alt="Screenshot 2025-11-26 at 20 06 22" src="https://github.com/user-attachments/assets/6bf845d5-b3c0-45af-a119-f1abdfc8b390" />
+
 ## Quick Start
 
 **Docker:**
