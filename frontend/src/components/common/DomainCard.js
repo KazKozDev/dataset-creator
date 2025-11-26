@@ -12,16 +12,31 @@ import {
 const DomainCard = ({ domain, onClick }) => {
   const cardBg = useColorModeValue('white', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-  
-  // Generate a consistent color for each domain
-  const getColorScheme = (key) => {
-    const options = ['blue', 'green', 'purple', 'red', 'orange', 'teal', 'cyan', 'pink'];
-    const index = key.charCodeAt(0) % options.length;
-    return options[index];
+
+  const getDomainColorScheme = (domainId) => {
+    const colorMap = {
+      support: 'blue',
+      medical: 'red',
+      legal: 'purple',
+      education: 'green',
+      business: 'cyan',
+      technical: 'orange',
+      sales: 'pink',
+      financial: 'teal',
+      research: 'purple',
+      coaching: 'yellow',
+      creative: 'pink',
+      meetings: 'gray',
+      ecommerce: 'blue',
+      hr: 'green',
+      marketing: 'pink',
+      gaming: 'purple',
+    };
+    return colorMap[domainId] || 'blue';
   };
-  
-  const colorScheme = getColorScheme(domain.key);
-  
+
+  const colorScheme = getDomainColorScheme(domain.key || domain.id);
+
   return (
     <Box
       bg={cardBg}
@@ -40,11 +55,11 @@ const DomainCard = ({ domain, onClick }) => {
         <Heading size="md" color={`${colorScheme}.500`}>
           {domain.name}
         </Heading>
-        
+
         <Text fontSize="sm" color="gray.600">
           {domain.description}
         </Text>
-        
+
         <HStack flexWrap="wrap">
           {domain.examples?.map((example, index) => (
             <Badge key={index} colorScheme={colorScheme} mr={1} mb={1}>
@@ -52,7 +67,7 @@ const DomainCard = ({ domain, onClick }) => {
             </Badge>
           ))}
         </HStack>
-        
+
         <Text fontSize="xs" color="gray.500">
           {Object.keys(domain.subdomains || {}).length} subdomains
         </Text>

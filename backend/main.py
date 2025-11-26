@@ -2,13 +2,17 @@
 FastAPI main application for LLM Dataset Creator
 """
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import json
 import asyncio
 import time
 import shutil
 import psutil
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Body, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -30,7 +34,9 @@ from llm_providers import (
 import generator
 import quality
 import utils
+from quality import toxicity_analyzer, pii_analyzer, deduplicator
 from config import get_config, reload_config
+from model_manager import get_model_manager
 from prompts import get_manager, PromptValidator, ValidationError
 from exporters import HuggingFaceExporter, OpenAIExporter, AlpacaExporter, LangChainExporter
 from analytics import get_tracker, DatasetStats
@@ -52,6 +58,9 @@ from collaboration import (
     ReviewStatus
 )
 from augmentation import DataAugmenter, AugmentationConfig
+from mlops.webhooks import get_webhook_manager
+from mlops.scheduler import get_scheduler
+from mlops.celery_app import run_generation_job, run_quality_check_job
 
 # Initialize FastAPI app
 @asynccontextmanager
@@ -117,7 +126,7 @@ app.add_middleware(
 )
 
 # Initialize database
-db.initialize()
+db.init_db()
 
 # Global configuration instance
 config = get_config()
@@ -135,6 +144,10 @@ class GenerationParams(BaseModel):
     temperature: float = Field(0.7, ge=0.1, le=1.0)
     model: Optional[str] = None
     provider: Optional[str] = None
+    generation_mode: Optional[str] = "standard"  # "standard" or "advanced"
+    advanced_method: Optional[str] = "swarm"  # "swarm", "evolution", "cosmic", "quantum"
+    agent_models: Optional[Dict[str, Dict[str, str]]] = None  # Role -> {provider, model}
+    template: Optional[str] = None  # Custom prompt template name
 
 class QualityParams(BaseModel):
     dataset_id: int
@@ -150,6 +163,31 @@ class ProviderConfig(BaseModel):
     model: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
+
+class TemplateCreate(BaseModel):
+    name: str
+    domain: str
+    subdomain: Optional[str] = None
+    content: str
+    variables: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    content: Optional[str] = None
+    variables: Optional[Dict[str, Any]] = None
+    description: Optional[str] = None
+
+class TemplateResponse(BaseModel):
+    id: int
+    name: str
+    domain: str
+    subdomain: Optional[str] = None
+    content: str
+    variables: Optional[Union[Dict[str, Any], List[str]]] = None
+    description: Optional[str] = None
+    created_at: str
+    updated_at: str
 
 class PromptTemplateCreate(BaseModel):
     template_data: Dict[str, Any]
@@ -241,6 +279,17 @@ class AugmentationRequest(BaseModel):
     random_insert_ratio: float = Field(0.1, ge=0.0, le=0.5)
     paraphrase_diversity: float = Field(0.7, ge=0.0, le=1.0)
     save_augmented: bool = True
+
+class WebhookCreateRequest(BaseModel):
+    url: str
+    events: List[str] = Field(default=["all"], description="Events to subscribe to")
+    secret: Optional[str] = None
+
+class ScheduledJobCreateRequest(BaseModel):
+    name: str
+    cron_expression: str
+    task_type: str = Field(..., description="generation, quality_check")
+    parameters: Dict[str, Any]
 
 # Helper function to get or create LLM provider
 def get_llm_provider(provider_type: Optional[str] = None, model: Optional[str] = None, **kwargs):
@@ -462,6 +511,80 @@ async def update_provider_configuration(provider_name: str, provider_config: Dic
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/models/reload")
+async def reload_models():
+    """Reload models configuration"""
+    try:
+        model_manager.reload()
+        return {"status": "success", "message": "Models reloaded"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Settings endpoints
+@app.post("/api/settings/api-key")
+async def save_api_key(request: dict):
+    """Save API key for a provider"""
+    try:
+        provider = request.get("provider", "").lower()
+        api_key = request.get("api_key", "")
+        
+        if not provider or not api_key:
+            raise HTTPException(status_code=400, detail="Provider and API key required")
+        
+        # Save to .env file
+        env_var = f"{provider.upper()}_API_KEY"
+        
+        # Read existing .env (in backend directory)
+        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        env_lines = []
+        
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                env_lines = f.readlines()
+        
+        # Update or add the key
+        key_found = False
+        for i, line in enumerate(env_lines):
+            if line.startswith(f"{env_var}="):
+                env_lines[i] = f"{env_var}={api_key}\n"
+                key_found = True
+                break
+        
+        if not key_found:
+            env_lines.append(f"{env_var}={api_key}\n")
+        
+        # Write back
+        with open(env_path, "w") as f:
+            f.writelines(env_lines)
+        
+        # Also set in current environment
+        os.environ[env_var] = api_key
+        
+        # Reload configuration and clear provider cache
+        reload_config()
+        ProviderRegistry.clear_cache()
+        
+        return {"status": "success", "message": f"API key saved for {provider}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/settings/api-keys")
+async def get_api_keys():
+    """Get configured API keys (masked)"""
+    try:
+        keys = {}
+        for provider in ["openai", "anthropic", "google", "mistral"]:
+            env_var = f"{provider.upper()}_API_KEY"
+            key = os.getenv(env_var, "")
+            # Mask the key
+            if key:
+                keys[provider] = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "***"
+            else:
+                keys[provider] = ""
+        return keys
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/config/reload")
 async def reload_configuration():
     """Reload configuration from file"""
@@ -661,26 +784,238 @@ async def validate_prompt_template(template_data: Dict[str, Any] = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Generator routes
-@app.post("/api/generator/start")
-async def start_generation(params: GenerationParams, background_tasks: BackgroundTasks):
-    """Start a generation job"""
+# Advanced Generation - SSE Streaming
+@app.get("/api/generator/stream/{job_id}")
+async def stream_generation_events(job_id: int):
+    """Stream real-time generation events via SSE"""
     try:
-        # Create job record
+        from streaming import create_sse_response
+        from agents.base_agent import get_event_bus
+        
+        # Get event bus for this job
+        event_bus = get_event_bus()
+        
+        # Create SSE response
+        return await create_sse_response(str(job_id), event_bus)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/generator/start")
+async def start_generation(params: GenerationParams):
+    """Start dataset generation with optional advanced mode"""
+    try:
+        # Check if advanced mode is requested
+        generation_mode = params.dict().get("generation_mode", "standard")
+        
+        if generation_mode == "advanced":
+            # Use advanced multi-agent generation
+            method = params.dict().get("advanced_method", "swarm")
+            
+            from agents.base_agent import get_event_bus
+            from agents.shared_memory import SharedMemory
+            
+            event_bus = get_event_bus()
+            shared_memory = SharedMemory()
+            
+            # Convert agent_models to role_models format
+            # Frontend sends: {"scout": {"provider": "openai", "model": "gpt-4"}}
+            # Backend expects: {"scout": {"llm_provider": "openai", "llm_model": "gpt-4"}}
+            role_models = {}
+            if params.agent_models:
+                for role, config in params.agent_models.items():
+                    if config.get("model"):  # Only add if model is specified
+                        role_models[role] = {
+                            "llm_provider": config.get("provider", params.provider or "ollama"),
+                            "llm_model": config.get("model"),
+                        }
+            
+            # Default kwargs for agents without specific model
+            default_kwargs = {
+                "llm_provider": params.provider or "ollama",
+                "llm_model": params.model or "llama3.2",
+                "temperature": params.temperature,
+            }
+            
+            # Select method
+            if method == "swarm":
+                from agents.swarm import HybridSwarmSynthesis
+                
+                advanced_generator = HybridSwarmSynthesis(
+                    event_bus=event_bus,
+                    shared_memory=shared_memory,
+                    num_scouts=3,
+                    num_gatherers=2,
+                    num_mutators=2,
+                    iterations=3,
+                    role_models=role_models,
+                    **default_kwargs
+                )
+                
+            elif method == "evolution":
+                from agents.evolution import EvolutionaryGeneFusion
+                
+                advanced_generator = EvolutionaryGeneFusion(
+                    event_bus=event_bus,
+                    shared_memory=shared_memory,
+                    population_size=50,
+                    generations=5,
+                    mutation_rate=0.3,
+                    crossover_rate=0.5,
+                    elite_size=10,
+                    role_models=role_models,
+                    **default_kwargs
+                )
+                
+            elif method == "cosmic":
+                from agents.cosmic import CosmicBurstSynthesis
+                
+                advanced_generator = CosmicBurstSynthesis(
+                    event_bus=event_bus,
+                    shared_memory=shared_memory,
+                    expansion_factor=10,
+                    iterations=3,
+                    temperature_threshold=0.5,
+                    role_models=role_models,
+                    **default_kwargs
+                )
+                
+            elif method == "quantum":
+                from agents.quantum import QuantumFieldOrchestration
+                
+                advanced_generator = QuantumFieldOrchestration(
+                    event_bus=event_bus,
+                    shared_memory=shared_memory,
+                    iterations=3,
+                    role_models=role_models,
+                    **default_kwargs
+                )
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown method: {method}")
+                
+            # Create job
+            job_id = db.create_generation_job(
+                dataset_id=None,
+                parameters=params.dict(),
+                examples_requested=params.count
+            )
+            
+            # Run generator in background
+            async def run_advanced_generation():
+                print(f"[Advanced] Starting generation job {job_id} with method {method}")
+                try:
+                    # Update status to running
+                    db.update_generation_job(job_id, status="running")
+                    print(f"[Advanced] Job {job_id} status set to running")
+                    
+                    print(f"[Advanced] Calling advanced_generator.run() for job {job_id}")
+                    results = await advanced_generator.run({
+                        "domain": params.domain,
+                        "subdomain": params.subdomain,
+                        "format": params.format,
+                        "language": params.language,
+                        "template": params.template,
+                        "count": params.count
+                    })
+                    print(f"[Advanced] Job {job_id} got {len(results) if results else 0} results")
+                    
+                    # Save results to dataset
+                    if results and len(results) > 0:
+                        from datetime import datetime
+                        import os
+                        
+                        timestamp = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+                        dataset_name = f"{params.domain}_{timestamp}"
+                        file_path = f"data/datasets/{dataset_name}.jsonl"
+                        
+                        # Ensure directory exists
+                        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                        
+                        dataset_id = db.create_dataset(
+                            name=dataset_name,
+                            domain=params.domain,
+                            format=params.format,
+                            file_path=file_path,
+                            subdomain=params.subdomain,
+                            example_count=len(results)
+                        )
+                        
+                        # Add examples to dataset
+                        db.add_examples(dataset_id, results)
+                        
+                        # Also save to file
+                        import json
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            for example in results:
+                                f.write(json.dumps(example, ensure_ascii=False) + '\n')
+                        
+                        db.update_generation_job(
+                            job_id,
+                            status="completed",
+                            examples_generated=len(results),
+                            dataset_id=dataset_id,
+                            completed_at=datetime.now().isoformat()
+                        )
+                    else:
+                        from datetime import datetime
+                        db.update_generation_job(
+                            job_id,
+                            status="completed",
+                            examples_generated=0,
+                            completed_at=datetime.now().isoformat()
+                        )
+                except Exception as e:
+                    import traceback
+                    error_msg = f"{str(e)}\n{traceback.format_exc()}"
+                    print(f"Advanced generation error: {error_msg}")
+                    db.update_generation_job(
+                        job_id,
+                        status="failed",
+                        errors=[str(e)]
+                    )
+            
+            asyncio.create_task(run_advanced_generation())
+            
+            return {
+                "job_id": job_id,
+                "status": "started",
+                "mode": "advanced",
+                "method": method,
+                "stream_url": f"/api/generator/stream/{job_id}"
+            }
+        
+        # Standard generation (existing code)
+        # Create job in database
+        job_params = {
+            "domain": params.domain,
+            "subdomain": params.subdomain,
+            "format": params.format,
+            "language": params.language,
+            "temperature": params.temperature,
+            "model": params.model,
+            "provider": params.provider
+        }
         job_id = db.create_generation_job(
-            parameters=params.model_dump(),
+            dataset_id=None,
+            parameters=job_params,
             examples_requested=params.count
         )
         
-        # Start generation in background
-        background_tasks.add_task(
-            generator.start_generation_job,
-            job_id=job_id,
-            params=params.model_dump(),
-            llm_provider=get_llm_provider(params.provider, params.model)
+        # Get LLM provider
+        llm_provider = get_llm_provider(
+            provider_type=params.provider,
+            model=params.model
         )
         
-        return {"job_id": job_id}
+        # Start generation in background
+        asyncio.create_task(generator.start_generation_job(job_id, llm_provider, job_params))
+        
+        return {
+            "job_id": job_id,
+            "status": "started",
+            "mode": "standard"
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -774,6 +1109,41 @@ async def list_datasets(
     datasets = db.get_datasets(domain, format, sort_by, sort_order, limit)
     return {"datasets": datasets}
 
+# MLOps Routes
+@app.post("/api/webhooks")
+async def register_webhook(request: WebhookCreateRequest):
+    """Register a new webhook"""
+    try:
+        manager = get_webhook_manager()
+        webhook_id = manager.register_webhook(request.url, request.events, request.secret)
+        return {"status": "success", "webhook_id": webhook_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/webhooks")
+async def list_webhooks():
+    """List all active webhooks"""
+    try:
+        manager = get_webhook_manager()
+        return {"webhooks": manager.list_webhooks()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/scheduler/jobs")
+async def create_scheduled_job(request: ScheduledJobCreateRequest):
+    """Create a new scheduled job"""
+    try:
+        scheduler = get_scheduler()
+        job_id = scheduler.schedule_job(
+            request.name,
+            request.cron_expression,
+            request.task_type,
+            request.parameters
+        )
+        return {"status": "success", "job_id": job_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/datasets/{dataset_id}")
 async def get_dataset_details(dataset_id: int):
     """Get dataset details"""
@@ -808,6 +1178,222 @@ async def get_dataset_examples(
         "limit": limit
     }
 
+@app.get("/api/datasets/{dataset_id}/examples/search")
+async def search_dataset_examples(
+    dataset_id: int,
+    q: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100)
+):
+    """Search within dataset examples"""
+    conn = db.get_db_connection()
+    cursor = conn.cursor()
+    
+    # Get dataset to verify it exists
+    cursor.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,))
+    dataset = cursor.fetchone()
+    
+    if not dataset:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    # Search in examples content
+    search_pattern = f"%{q}%"
+    
+    # Count total matches
+    cursor.execute("""
+        SELECT COUNT(*) FROM examples 
+        WHERE dataset_id = ? AND content LIKE ?
+    """, (dataset_id, search_pattern))
+    total = cursor.fetchone()[0]
+    
+    # Get paginated results
+    offset = (page - 1) * page_size
+    cursor.execute("""
+        SELECT id, content, quality_score, status, metadata 
+        FROM examples 
+        WHERE dataset_id = ? AND content LIKE ?
+        ORDER BY id
+        LIMIT ? OFFSET ?
+    """, (dataset_id, search_pattern, page_size, offset))
+    
+    examples = cursor.fetchall()
+    conn.close()
+    
+    # Parse examples
+    examples_list = []
+    for ex in examples:
+        try:
+            content = json.loads(ex['content']) if isinstance(ex['content'], str) else ex['content']
+            examples_list.append({
+                "id": ex['id'],
+                "content": content,
+                "quality_score": ex['quality_score'],
+                "status": ex['status'],
+                "metadata": json.loads(ex['metadata']) if ex['metadata'] else None
+            })
+        except:
+            continue
+    
+    return {
+        "examples": examples_list,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size,
+        "query": q
+    }
+
+# Template Endpoints
+
+@app.post("/api/templates", response_model=TemplateResponse)
+async def create_template(template: TemplateCreate):
+    """Create a new template"""
+    template_id = db.create_template(
+        name=template.name,
+        domain=template.domain,
+        subdomain=template.subdomain,
+        content=template.content,
+        variables=template.variables,
+        description=template.description
+    )
+    
+    created_template = db.get_template(template_id)
+    if not created_template:
+        raise HTTPException(status_code=500, detail="Failed to create template")
+        
+    # Parse variables JSON if string
+    if created_template['variables'] and isinstance(created_template['variables'], str):
+        created_template['variables'] = json.loads(created_template['variables'])
+        
+    return created_template
+
+@app.get("/api/templates", response_model=List[TemplateResponse])
+async def get_templates(domain: Optional[str] = None):
+    """Get all templates"""
+    templates = db.get_templates(domain)
+    
+    # If no templates exist, load defaults
+    if not templates:
+        from default_templates import PREDEFINED_TEMPLATES
+        for template_data in PREDEFINED_TEMPLATES:
+            try:
+                # Combine system_prompt, user_template, assistant_template into content
+                content = f"System: {template_data['system_prompt']}\n\nUser: {template_data['user_template']}\n\nAssistant: {template_data['assistant_template']}"
+                
+                db.create_template(
+                    name=template_data['name'],
+                    domain=template_data['domain'],
+                    content=content,
+                    subdomain=template_data.get('subdomain'),
+                    variables=template_data.get('variables'),
+                    description=template_data.get('description')
+                )
+            except Exception as e:
+                print(f"Failed to create default template: {e}")
+        templates = db.get_templates(domain)
+    
+    # Convert to response format
+    result = []
+    for t in templates:
+        t_dict = dict(t)
+        if t_dict.get('variables') and isinstance(t_dict['variables'], str):
+            t_dict['variables'] = json.loads(t_dict['variables'])
+        result.append(t_dict)
+    
+    return result
+
+@app.post("/api/templates/load-defaults")
+async def load_default_templates():
+    """Load default templates into database"""
+    from default_templates import PREDEFINED_TEMPLATES
+    loaded = []
+    for template_data in PREDEFINED_TEMPLATES:
+        try:
+            # Combine system_prompt, user_template, assistant_template into content
+            content = f"System: {template_data['system_prompt']}\n\nUser: {template_data['user_template']}\n\nAssistant: {template_data['assistant_template']}"
+            
+            template_id = db.create_template(
+                name=template_data['name'],
+                domain=template_data['domain'],
+                content=content,
+                subdomain=template_data.get('subdomain'),
+                variables=template_data.get('variables'),
+                description=template_data.get('description')
+            )
+            loaded.append({"id": template_id, "name": template_data['name']})
+        except Exception as e:
+            print(f"Failed to create default template {template_data['name']}: {e}")
+    return {"status": "success", "loaded": len(loaded), "templates": loaded}
+
+@app.get("/api/templates/{template_id}", response_model=TemplateResponse)
+async def get_template(template_id: int):
+    """Get a template by ID"""
+    template = db.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+        
+    if template['variables'] and isinstance(template['variables'], str):
+        template['variables'] = json.loads(template['variables'])
+        
+    return template
+
+@app.put("/api/templates/{template_id}")
+async def update_template(template_id: int, template: TemplateUpdate):
+    """Update a template"""
+    success = db.update_template(
+        template_id=template_id,
+        name=template.name,
+        content=template.content,
+        variables=template.variables,
+        description=template.description
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Template not found")
+        
+    updated_template = db.get_template(template_id)
+    if updated_template['variables'] and isinstance(updated_template['variables'], str):
+        updated_template['variables'] = json.loads(updated_template['variables'])
+        
+    return updated_template
+
+@app.delete("/api/templates/{template_id}")
+async def delete_template(template_id: int):
+    """Delete a template"""
+    success = db.delete_template(template_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"status": "success"}
+
+@app.get("/api/templates/{template_id}/versions")
+async def get_template_versions(template_id: int):
+    """Get version history for a template"""
+    versions = db.get_template_versions(template_id)
+    
+    # Parse variables JSON
+    result = []
+    for v in versions:
+        v_dict = dict(v)
+        if v_dict['variables'] and isinstance(v_dict['variables'], str):
+            v_dict['variables'] = json.loads(v_dict['variables'])
+        result.append(v_dict)
+        
+    return result
+
+@app.post("/api/templates/{template_id}/restore/{version_id}")
+async def restore_template_version(template_id: int, version_id: int):
+    """Restore a specific version"""
+    success = db.restore_template_version(template_id, version_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Version not found")
+        
+    restored_template = db.get_template(template_id)
+    if restored_template['variables'] and isinstance(restored_template['variables'], str):
+        restored_template['variables'] = json.loads(restored_template['variables'])
+        
+    return restored_template
+
 @app.get("/api/datasets/{dataset_id}/stats")
 async def get_dataset_stats(dataset_id: int):
     """Get statistics about a dataset"""
@@ -837,6 +1423,102 @@ async def download_dataset(dataset_id: int):
         filename=os.path.basename(file_path),
         media_type="application/octet-stream"
     )
+
+@app.get("/api/datasets/{dataset_id}/export")
+async def export_dataset_get(
+    dataset_id: int,
+    format: str = Query(..., description="Export format: huggingface, openai, alpaca, sharegpt, langchain"),
+    output_filename: str = Query(..., description="Output filename")
+):
+    """Export a dataset to various ML framework formats and download"""
+    import tempfile
+    import zipfile
+    
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load all examples (no limit for export)
+        examples = db.get_examples(dataset_id, limit=100000)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found in dataset")
+
+        # Create temp directory for export
+        temp_dir = tempfile.mkdtemp()
+        
+        # Select exporter based on format
+        format_lower = format.lower()
+        
+        if format_lower == "huggingface":
+            exporter = HuggingFaceExporter(output_dir=temp_dir)
+            output_path = exporter.export(
+                examples=examples,
+                output_filename=output_filename,
+                dataset_name=dataset.get("name", "dataset")
+            )
+            # HuggingFace creates a directory, zip it
+            zip_path = os.path.join(temp_dir, f"{output_filename}.zip")
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(output_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, output_path)
+                        zipf.write(file_path, arcname)
+            return FileResponse(
+                path=zip_path,
+                filename=f"{output_filename}.zip",
+                media_type="application/zip"
+            )
+
+        elif format_lower == "openai":
+            exporter = OpenAIExporter(output_dir=temp_dir)
+            output_path = exporter.export(
+                examples=examples,
+                output_filename=output_filename
+            )
+            return FileResponse(
+                path=output_path,
+                filename=f"{output_filename}.jsonl",
+                media_type="application/jsonl"
+            )
+
+        elif format_lower in ["alpaca", "sharegpt"]:
+            exporter = AlpacaExporter(output_dir=temp_dir)
+            output_path = exporter.export(
+                examples=examples,
+                output_filename=output_filename,
+                format_type=format_lower
+            )
+            return FileResponse(
+                path=output_path,
+                filename=f"{output_filename}.json",
+                media_type="application/json"
+            )
+
+        elif format_lower == "langchain":
+            exporter = LangChainExporter(output_dir=temp_dir)
+            output_path = exporter.export(
+                examples=examples,
+                output_filename=output_filename
+            )
+            return FileResponse(
+                path=output_path,
+                filename=f"{output_filename}.jsonl",
+                media_type="application/jsonl"
+            )
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported export format: {format}. Supported: huggingface, openai, alpaca, sharegpt, langchain"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/datasets/{dataset_id}/export-csv")
 async def export_dataset_to_csv(dataset_id: int, background_tasks: BackgroundTasks):
@@ -1410,28 +2092,46 @@ def get_all_tasks():
 # Добавляем API эндпоинты для настроек системы
 @app.get("/api/settings")
 async def get_settings():
-    """Get system settings"""
+    """Get current settings"""
+    return {
+        "default_provider": config.get_default_provider(),
+        "generation": config.get_generation_settings(),
+        "quality": config.get_quality_settings(),
+        "system": config.get_system_settings()
+    }
+
+# Model Management Endpoints
+@app.get("/api/models/providers")
+async def get_providers():
+    """Get list of available LLM providers"""
     try:
-        # Возвращаем текущие настройки системы
-        provider_config = {
-            "provider": DEFAULT_PROVIDER,
-            "model": DEFAULT_MODEL,
-            "apiKey": OPENAI_API_KEY if DEFAULT_PROVIDER == "openai" else ANTHROPIC_API_KEY if DEFAULT_PROVIDER == "anthropic" else "",
-            "baseUrl": OLLAMA_URL if DEFAULT_PROVIDER == "ollama" else ""
-        }
-        
-        system_config = {
-            "dataDirectory": str(Path(os.environ.get("DATA_DIR", "/app/data"))),
-            "maxConcurrentJobs": int(os.environ.get("MAX_CONCURRENT_JOBS", "2")),
-            "enableCaching": os.environ.get("ENABLE_CACHING", "true").lower() == "true",
-            "cacheTTL": int(os.environ.get("CACHE_TTL", "24")),
-            "logLevel": os.environ.get("LOG_LEVEL", "info")
-        }
-        
-        return {
-            "modelSettings": provider_config,
-            "systemSettings": system_config
-        }
+        model_manager = get_model_manager()
+        providers = model_manager.get_providers()
+        return {"providers": providers}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models/{provider}")
+async def get_provider_models_endpoint(provider: str):
+    """Get list of models for a specific provider"""
+    try:
+        model_manager = get_model_manager()
+        models = model_manager.get_models(provider)
+        return models
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/models/{provider}/{model_id}/info")
+async def get_model_info_endpoint(provider: str, model_id: str):
+    """Get detailed information about a specific model"""
+    try:
+        model_manager = get_model_manager()
+        model_info = model_manager.get_model_info(provider, model_id)
+        if not model_info:
+            raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found for provider '{provider}'")
+        return model_info
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1885,6 +2585,545 @@ async def remove_duplicate_examples(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================================================
+# Phase 6: Advanced Quality Metrics Endpoints
+# ==================================================
+
+@app.post("/api/quality/analyze/toxicity")
+async def analyze_toxicity(
+    dataset_id: int,
+    threshold: float = Query(0.5, description="Toxicity threshold (0-1)")
+):
+    """Analyze dataset for toxic content"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Analyze each example
+        results = []
+        toxic_count = 0
+        
+        for example in examples:
+            # Get text to analyze (try different fields)
+            text = ""
+            if isinstance(example, dict):
+                # Handle chat format with messages array
+                if 'messages' in example and isinstance(example['messages'], list):
+                    # Concatenate all message contents
+                    text = " ".join([msg.get('content', '') for msg in example['messages'] if isinstance(msg, dict)])
+                elif 'output' in example:
+                    text = example['output']
+                elif 'text' in example:
+                    text = example['text']
+                elif 'response' in example:
+                    text = example['response']
+                elif 'content' in example:
+                    text = example['content']
+            
+            if not text:
+                continue
+                
+            # Analyze toxicity
+            scores = toxicity_analyzer.analyze(text)
+            
+            # Check if toxic
+            is_toxic = scores['toxicity'] > threshold
+            if is_toxic:
+                toxic_count += 1
+            
+            results.append({
+                'example_id': example.get('id'),
+                'is_toxic': is_toxic,
+                'scores': scores
+            })
+
+        return {
+            'dataset_id': dataset_id,
+            'total_analyzed': len(results),
+            'toxic_count': toxic_count,
+            'toxic_percentage': round(toxic_count / len(results) * 100, 2) if results else 0,
+            'results': results[:100]  # Limit results to first 100 for display
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analyze/pii")
+async def analyze_pii(dataset_id: int):
+    """Analyze dataset for PII (Personally Identifiable Information)"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Analyze each example
+        results = []
+        pii_count = 0
+        pii_types = {}
+        
+        for example in examples:
+            # Get text to analyze
+            text = ""
+            if isinstance(example, dict):
+                # Handle chat format with messages array
+                if 'messages' in example and isinstance(example['messages'], list):
+                    text = " ".join([msg.get('content', '') for msg in example['messages'] if isinstance(msg, dict)])
+                elif 'output' in example:
+                    text = example['output']
+                elif 'text' in example:
+                    text = example['text']
+                elif 'response' in example:
+                    text = example['response']
+                elif 'content' in example:
+                    text = example['content']
+            
+            if not text:
+                continue
+                
+            # Analyze PII
+            entities = pii_analyzer.analyze(text)
+            
+            if entities:
+                pii_count += 1
+                for entity in entities:
+                    entity_type = entity['type']
+                    pii_types[entity_type] = pii_types.get(entity_type, 0) + 1
+            
+            results.append({
+                'example_id': example.get('id'),
+                'has_pii': len(entities) > 0,
+                'entities': entities
+            })
+
+        return {
+            'dataset_id': dataset_id,
+            'total_analyzed': len(results),
+            'pii_count': pii_count,
+            'pii_percentage': round(pii_count / len(results) * 100, 2) if results else 0,
+            'pii_types': pii_types,
+            'results': results[:100]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analyze/duplicates")
+async def analyze_duplicates(
+    dataset_id: int,
+    threshold: float = Query(0.8, description="Similarity threshold (0-1)")
+):
+    """Analyze dataset for duplicate content"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Clear previous index
+        deduplicator.clear()
+        
+        # Index all documents
+        duplicate_groups = []
+        indexed_ids = set()
+        
+        for i, example in enumerate(examples):
+            # Get text to analyze
+            text = ""
+            if isinstance(example, dict):
+                # Handle chat format with messages array
+                if 'messages' in example and isinstance(example['messages'], list):
+                    text = " ".join([msg.get('content', '') for msg in example['messages'] if isinstance(msg, dict)])
+                elif 'output' in example:
+                    text = example['output']
+                elif 'text' in example:
+                    text = example['text']
+                elif 'response' in example:
+                    text = example['response']
+                elif 'content' in example:
+                    text = example['content']
+            
+            if not text:
+                continue
+            
+            doc_id = f"doc_{i}"
+            
+            # Check for duplicates before adding
+            if doc_id not in indexed_ids:
+                duplicates = deduplicator.find_duplicates(doc_id, text)
+                
+                if duplicates:
+                    # Found duplicates
+                    group = [doc_id] + duplicates
+                    duplicate_groups.append({
+                        'group': group,
+                        'example_ids': [examples[int(d.split('_')[1])].get('id') for d in group if int(d.split('_')[1]) < len(examples)]
+                    })
+                
+                # Add to index
+                deduplicator.add_document(doc_id, text)
+                indexed_ids.add(doc_id)
+
+        # Calculate stats
+        total_duplicates = sum(len(g['group']) - 1 for g in duplicate_groups)
+
+        return {
+            'dataset_id': dataset_id,
+            'total_analyzed': len(examples),
+            'duplicate_groups': len(duplicate_groups),
+            'total_duplicates': total_duplicates,
+            'duplicate_percentage': round(total_duplicates / len(examples) * 100, 2) if examples else 0,
+            'groups': duplicate_groups[:50]  # Show first 50 groups
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analyze/full")
+async def analyze_full_quality(
+    dataset_id: int,
+    toxicity_threshold: float = Query(0.5, description="Toxicity threshold"),
+    duplicate_threshold: float = Query(0.8, description="Duplicate similarity threshold")
+):
+    """Run all quality checks on a dataset"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Run all analyses in parallel (conceptually, but sequentially for simplicity)
+        # In production, you might want to use asyncio.gather() here
+        
+        # Toxicity analysis
+        toxicity_result = await analyze_toxicity(dataset_id, toxicity_threshold)
+        
+        # PII analysis
+        pii_result = await analyze_pii(dataset_id)
+        
+        # Duplicate analysis
+        duplicate_result = await analyze_duplicates(dataset_id, duplicate_threshold)
+
+        return {
+            'dataset_id': dataset_id,
+            'timestamp': datetime.now().isoformat(),
+            'summary': {
+                'total_examples': toxicity_result['total_analyzed'],
+                'toxic_count': toxicity_result['toxic_count'],
+                'toxic_percentage': toxicity_result['toxic_percentage'],
+                'pii_count': pii_result['pii_count'],
+                'pii_percentage': pii_result['pii_percentage'],
+                'duplicate_groups': duplicate_result['duplicate_groups'],
+                'duplicate_percentage': duplicate_result['duplicate_percentage']
+            },
+            'toxicity': toxicity_result,
+            'pii': pii_result,
+            'duplicates': duplicate_result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/anonymize/pii")
+async def anonymize_dataset_pii(dataset_id: int):
+    """Anonymize PII in a dataset (creates a new version)"""
+    try:
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+
+        # Anonymize each example
+        anonymized_examples = []
+        anonymized_count = 0
+        
+        for example in examples:
+            # Get text to anonymize
+            text_field = None
+            text = ""
+            
+            if isinstance(example, dict):
+                # Handle chat format with messages array
+                if 'messages' in example and isinstance(example['messages'], list):
+                    # Anonymize each message separately
+                    anonymized_messages = []
+                    for msg in example['messages']:
+                        if isinstance(msg, dict) and 'content' in msg:
+                            anonymized_content = pii_analyzer.anonymize(msg['content'])
+                            if anonymized_content != msg['content']:
+                                anonymized_count += 1
+                            msg_copy = msg.copy()
+                            msg_copy['content'] = anonymized_content
+                            anonymized_messages.append(msg_copy)
+                        else:
+                            anonymized_messages.append(msg)
+                    example_copy = example.copy()
+                    example_copy['messages'] = anonymized_messages
+                    anonymized_examples.append(example_copy)
+                    continue
+                elif 'output' in example:
+                    text_field = 'output'
+                    text = example['output']
+                elif 'text' in example:
+                    text_field = 'text'
+                    text = example['text']
+                elif 'response' in example:
+                    text_field = 'response'
+                    text = example['response']
+                elif 'content' in example:
+                    text_field = 'content'
+                    text = example['content']
+            
+            if text and text_field:
+                # Anonymize
+                anonymized_text = pii_analyzer.anonymize(text)
+                
+                if anonymized_text != text:
+                    anonymized_count += 1
+                
+                # Update example
+                example_copy = example.copy()
+                example_copy[text_field] = anonymized_text
+                anonymized_examples.append(example_copy)
+            else:
+                anonymized_examples.append(example)
+
+        return {
+            'dataset_id': dataset_id,
+            'total_examples': len(examples),
+            'anonymized_count': anonymized_count,
+            'message': f"Anonymized {anonymized_count} examples. Create a new version to save changes.",
+            'preview': anonymized_examples[:10]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================================================
+# Dataset Analytics Endpoints (Evaluation Module)
+# ==================================================
+
+@app.post("/api/quality/analytics")
+async def analyze_dataset_analytics(dataset_id: int):
+    """
+    Comprehensive dataset analytics including diversity metrics,
+    text statistics, and semantic clustering.
+    """
+    try:
+        from evaluation import DatasetEvaluator
+        
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+        
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+        
+        # Run evaluation
+        evaluator = DatasetEvaluator(use_semantic=True)
+        report = evaluator.evaluate(
+            examples=examples,
+            dataset_id=dataset_id,
+            dataset_name=dataset.get('name', 'Unknown')
+        )
+        
+        return report.to_dict()
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analytics/diversity")
+async def analyze_diversity_only(dataset_id: int):
+    """
+    Analyze dataset diversity metrics only (Distinct-n, Self-BLEU).
+    Faster than full analytics.
+    """
+    try:
+        from evaluation.diversity_metrics import analyze_diversity
+        from evaluation.text_stats import extract_messages
+        
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+        
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+        
+        # Extract all texts
+        texts = []
+        for example in examples:
+            user_msgs, assistant_msgs = extract_messages(example)
+            texts.extend(user_msgs)
+            texts.extend(assistant_msgs)
+        
+        # Analyze diversity
+        from dataclasses import asdict
+        metrics = analyze_diversity(texts)
+        
+        return {
+            "dataset_id": dataset_id,
+            "total_examples": len(examples),
+            "total_texts": len(texts),
+            "metrics": asdict(metrics)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analytics/text-stats")
+async def analyze_text_stats_only(dataset_id: int):
+    """
+    Analyze text statistics only (lengths, vocabulary, patterns).
+    Faster than full analytics.
+    """
+    try:
+        from evaluation.text_stats import calculate_text_stats
+        from dataclasses import asdict
+        
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+        
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+        
+        # Calculate stats
+        stats = calculate_text_stats(examples)
+        
+        return {
+            "dataset_id": dataset_id,
+            "stats": {
+                "total_examples": stats.total_examples,
+                "total_tokens": stats.total_tokens,
+                "total_characters": stats.total_characters,
+                "question_length": asdict(stats.question_length),
+                "answer_length": asdict(stats.answer_length),
+                "avg_qa_ratio": stats.avg_qa_ratio,
+                "vocabulary_size": stats.vocabulary_size,
+                "top_words": stats.top_words,
+                "languages": stats.languages,
+                "has_code_blocks": stats.has_code_blocks,
+                "has_lists": stats.has_lists,
+                "has_urls": stats.has_urls,
+                "has_numbers": stats.has_numbers,
+                "empty_responses": stats.empty_responses,
+                "very_short_responses": stats.very_short_responses,
+                "very_long_responses": stats.very_long_responses,
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/quality/analytics/semantic")
+async def analyze_semantic_only(
+    dataset_id: int,
+    num_clusters: Optional[int] = Query(None, description="Number of clusters (auto if not set)")
+):
+    """
+    Analyze semantic clustering only.
+    Requires sentence-transformers for best results.
+    """
+    try:
+        from evaluation.semantic_analyzer import SemanticAnalyzer
+        
+        # Get dataset
+        dataset = db.get_dataset(dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_id} not found")
+        
+        # Load examples
+        examples = db.get_examples(dataset_id)
+        if not examples:
+            raise HTTPException(status_code=404, detail="No examples found")
+        
+        # Analyze
+        analyzer = SemanticAnalyzer()
+        analysis = analyzer.analyze(examples, num_clusters=num_clusters)
+        
+        return {
+            "dataset_id": dataset_id,
+            "total_examples": len(examples),
+            "semantic": {
+                "num_clusters": analysis.num_clusters,
+                "semantic_diversity": analysis.semantic_diversity,
+                "avg_cluster_size": analysis.avg_cluster_size,
+                "largest_cluster_ratio": analysis.largest_cluster_ratio,
+                "outlier_count": analysis.outlier_count,
+                "topic_distribution": analysis.topic_distribution,
+                "clusters": [
+                    {
+                        "cluster_id": c.cluster_id,
+                        "size": c.size,
+                        "centroid_text": c.centroid_text,
+                        "keywords": c.keywords,
+                    }
+                    for c in analysis.clusters
+                ]
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Dataset Versioning routes
 @app.post("/api/versions/create")
@@ -3004,3 +4243,156 @@ if __name__ == "__main__":
     
     # Start the server
     uvicorn.run(app, host="0.0.0.0", port=8000)
+# -----------------------------------------------------------------------------
+# MLOps API Endpoints (Prompts, Reviews, Comments, Versions)
+# -----------------------------------------------------------------------------
+
+# Prompts
+class PromptCreateRequest(BaseModel):
+    name: str
+    content: str
+    description: Optional[str] = ""
+    variables: List[str] = []
+    metadata: Dict[str, Any] = {}
+
+@app.post("/api/prompts")
+async def create_prompt(request: PromptCreateRequest):
+    """Create a new prompt template"""
+    try:
+        prompt_id = db.create_prompt(
+            name=request.name,
+            content=request.content,
+            description=request.description,
+            variables=request.variables,
+            metadata=request.metadata
+        )
+        return {"id": prompt_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/prompts")
+async def list_prompts():
+    """List all prompt templates"""
+    try:
+        prompts = db.get_prompts()
+        return {"prompts": prompts}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/prompts/{prompt_id}")
+async def get_prompt(prompt_id: int):
+    """Get a prompt template by ID"""
+    prompt = db.get_prompt(prompt_id)
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    return prompt
+
+@app.put("/api/prompts/{prompt_id}")
+async def update_prompt(prompt_id: int, request: PromptCreateRequest):
+    """Update a prompt template"""
+    try:
+        success = db.update_prompt(
+            prompt_id,
+            name=request.name,
+            content=request.content,
+            description=request.description,
+            variables=request.variables,
+            metadata=request.metadata
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/prompts/{prompt_id}")
+async def delete_prompt(prompt_id: int):
+    """Delete a prompt template"""
+    try:
+        success = db.delete_prompt(prompt_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Reviews
+@app.post("/api/reviews")
+async def create_review_endpoint(request: ReviewCreateRequest):
+    """Create a new review"""
+    try:
+        review_id = db.create_review(
+            dataset_id=request.dataset_id,
+            reviewer_id=request.reviewer_id,
+            status=request.status,
+            feedback=request.feedback
+        )
+        return {"id": review_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/datasets/{dataset_id}/reviews")
+async def list_reviews_endpoint(dataset_id: int):
+    """List reviews for a dataset"""
+    try:
+        reviews = db.get_reviews(dataset_id)
+        return {"reviews": reviews}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Comments
+@app.post("/api/comments")
+async def create_comment_endpoint(request: CommentCreateRequest):
+    """Create a new comment"""
+    try:
+        comment_id = db.create_comment(
+            dataset_id=request.dataset_id,
+            user_id=request.user_id,
+            content=request.content,
+            example_id=request.example_id,
+            parent_id=int(request.parent_comment_id) if request.parent_comment_id else None
+        )
+        return {"id": comment_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/datasets/{dataset_id}/comments")
+async def list_comments_endpoint(dataset_id: int):
+    """List comments for a dataset"""
+    try:
+        comments = db.get_comments(dataset_id)
+        return {"comments": comments}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Versions
+@app.post("/api/versions")
+async def create_version_endpoint(request: VersionCreateRequest):
+    """Create a new dataset version"""
+    try:
+        # In a real app, we would snapshot the file here
+        # For now, we'll assume the current file is the version
+        dataset = db.get_dataset(request.dataset_id)
+        if not dataset:
+            raise HTTPException(status_code=404, detail="Dataset not found")
+            
+        version_id = db.create_version(
+            dataset_id=request.dataset_id,
+            file_path=dataset['file_path'], # In reality, copy this file
+            commit_message=request.commit_message,
+            author=request.author,
+            example_count=dataset['example_count'],
+            metadata={"tags": request.tags}
+        )
+        return {"id": version_id, "status": "created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/datasets/{dataset_id}/versions")
+async def list_versions_endpoint(dataset_id: int):
+    """List versions for a dataset"""
+    try:
+        versions = db.get_versions(dataset_id)
+        return {"versions": versions}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

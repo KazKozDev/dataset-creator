@@ -5,9 +5,13 @@ import {
   Flex,
   Text,
   VStack,
+  HStack,
   Icon,
+  Image,
   Heading,
   useColorModeValue,
+  Divider,
+  Link as ChakraLink,
 } from '@chakra-ui/react';
 import {
   FiHome,
@@ -16,6 +20,8 @@ import {
   FiCheckCircle,
   FiGrid,
   FiActivity,
+  FiCopy,
+  FiExternalLink,
 } from 'react-icons/fi';
 
 const NavItem = ({ icon, children, to, ...rest }) => {
@@ -24,7 +30,7 @@ const NavItem = ({ icon, children, to, ...rest }) => {
   const activeColor = useColorModeValue('blue.500', 'blue.300');
   const hoverBg = useColorModeValue('gray.100', 'gray.700');
   const activeStyle = isActive ? { color: activeColor, fontWeight: 'bold' } : {};
-  
+
   return (
     <Link to={to} style={{ textDecoration: 'none', width: '100%' }}>
       <Flex
@@ -41,12 +47,14 @@ const NavItem = ({ icon, children, to, ...rest }) => {
       >
         {icon && (
           <Icon
-            mr="4"
+            ml="2"
+            mr="1"
             fontSize="16"
             as={icon}
             color={isActive ? activeColor : 'inherit'}
           />
         )}
+        {!icon && <Box ml="2" />}
         {children}
       </Flex>
     </Link>
@@ -57,7 +65,7 @@ const Sidebar = () => {
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const textColor = useColorModeValue('gray.600', 'gray.200');
-  
+
   return (
     <Box
       position="fixed"
@@ -70,23 +78,27 @@ const Sidebar = () => {
       display="flex"
       flexDirection="column"
     >
-      <Flex
-        h="20"
-        alignItems="center"
-        mx="8"
-        justifyContent="space-between"
-      >
-        <Heading size="lg" fontWeight="bold">
-          Dataset Creator
-        </Heading>
-      </Flex>
-      
+      {/* Logo/Title */}
+      <Box p={6} borderBottomWidth="1px" borderColor={borderColor}>
+        <HStack align="start" spacing={3}>
+          <Image src="/logo.png" alt="Logo" boxSize="70px" objectFit="contain" />
+          <VStack align="start" spacing={0}>
+            <Heading size="md">Synthetic</Heading>
+            <Heading size="md">Data</Heading>
+            <Heading size="md">Foundry</Heading>
+          </VStack>
+        </HStack>
+      </Box>
+
       <VStack spacing={0} align="stretch" flex="1">
         <NavItem icon={FiHome} to="/">
           Dashboard
         </NavItem>
         <NavItem icon={FiGrid} to="/generator">
           Generator
+        </NavItem>
+        <NavItem icon={FiCopy} to="/templates">
+          Templates
         </NavItem>
         <NavItem icon={FiCheckCircle} to="/quality">
           Quality Control
@@ -97,26 +109,31 @@ const Sidebar = () => {
         <NavItem icon={FiActivity} to="/tasks">
           Tasks
         </NavItem>
+
+        {/* Settings at the bottom */}
+        <Box px={4} py={3} mt={4}>
+          <Divider />
+        </Box>
         <NavItem icon={FiSettings} to="/settings">
           Settings
         </NavItem>
       </VStack>
 
       <Box p={4} mt="auto">
-        <Text fontSize="xs" color={textColor} lineHeight="1.4">
-          Synthetic data for fine-tuning
-        </Text>
-        <Link
-          href="https://github.com/KazKozDev/dataset-creator"
-          isExternal
-          fontSize="3xs"
-          color={textColor}
+        <ChakraLink
+          href="https://github.com/KazKozDev"
+          color="black"
+          fontSize="sm"
+          display="inline-flex"
+          alignItems="center"
           _hover={{ color: 'blue.500' }}
           mt={1}
           lineHeight="1.4"
+          isExternal
         >
-          github.com/kazkozdev
-        </Link>
+          KazKozDev
+          <Icon as={FiExternalLink} ml={1} />
+        </ChakraLink>
       </Box>
     </Box>
   );

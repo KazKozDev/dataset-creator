@@ -125,46 +125,70 @@ class OllamaProvider(LLMProvider):
 class OpenAIProvider(LLMProvider):
     """OpenAI (ChatGPT) provider"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4", timeout: int = 120):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-5", timeout: int = 300):
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self.model = model
         self.base_url = "https://api.openai.com/v1"
         self.timeout = timeout
         
     def generate_text(self, prompt: str, temperature: float = 0.7) -> str:
-        """Generate text using OpenAI API"""
-        try:
-            if not self.api_key:
-                print("OpenAI API key not found")
+        """Generate text using OpenAI API with retry logic"""
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                if not self.api_key:
+                    print("OpenAI API key not found")
+                    return ""
+                
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
+                
+                # GPT-5 and some newer models don't support temperature parameter
+                # Only add temperature if it's not the default and model supports it
+                if not self.model.startswith("gpt-5") and not self.model.startswith("o1"):
+                    payload["temperature"] = temperature
+                
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=self.timeout
+                )
+                
+                if response.status_code != 200:
+                    print(f"OpenAI API error: {response.status_code}, {response.text}")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                        continue
+                    return ""
+                
+                return response.json()["choices"][0]["message"]["content"].strip()
+                
+            except requests.exceptions.ConnectionError as e:
+                print(f"Connection error (attempt {attempt + 1}/{max_retries}): {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+                    continue
                 return ""
-            
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=self.timeout
-            )
-            
-            if response.status_code != 200:
-                print(f"OpenAI API error: {response.status_code}, {response.text}")
+            except Exception as e:
+                print(f"Error calling OpenAI API: {e}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 ** attempt)
+                    continue
                 return ""
-            
-            return response.json()["choices"][0]["message"]["content"].strip()
-            
-        except Exception as e:
-            print(f"Error calling OpenAI API: {e}")
-            return ""
+        
+        return ""
     
     def is_available(self) -> bool:
         """Check if OpenAI API is available"""

@@ -16,7 +16,11 @@ from tqdm import tqdm
 
 from domains import DOMAINS, COMMON_PARAMS
 from llm_providers import LLMProvider, OllamaProvider
+from llm_providers import LLMProvider, OllamaProvider
 import database as db
+from mlops.webhooks import get_webhook_manager
+from mlops.mlflow_integration import get_mlflow_logger
+from mlops.wandb_integration import get_wandb_logger
 
 class DatasetGenerator:
     """Generator for synthetic datasets"""
@@ -164,8 +168,17 @@ class DatasetGenerator:
         
         return scenario
     
-    def get_prompt_in_language(self, scenario: Dict[str, Any], format_type: str, language: str = "en") -> str:
+    def get_prompt_in_language(self, scenario: Dict[str, Any], format_type: str, language: str = "en", custom_template: Optional[str] = None) -> str:
         """Create a prompt for the LLM based on scenario parameters in the specified language"""
+        
+        # If custom template is provided, use it
+        if custom_template:
+            # Replace variables in template with scenario values
+            prompt = custom_template
+            for key, value in scenario.items():
+                prompt = prompt.replace(f"{{{key}}}", str(value))
+            return prompt
+        
         domain_key = scenario["domain"]
         
         # Base prompt in English
@@ -283,10 +296,10 @@ Return ONLY valid JSON without explanations or markdown formatting.
         
         return user_prompt
     
-    def generate_example(self, scenario: Dict[str, Any], format_type: str, language: str = "en") -> Optional[Dict[str, Any]]:
+    def generate_example(self, scenario: Dict[str, Any], format_type: str, language: str = "en", custom_template: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Generate a single synthetic example using LLM"""
-        # Create prompt based on selected language
-        user_prompt = self.get_prompt_in_language(scenario, format_type, language)
+        # Create prompt based on selected language and template
+        user_prompt = self.get_prompt_in_language(scenario, format_type, language, custom_template)
         
         try:
             # Generate text from LLM
@@ -325,11 +338,11 @@ Return ONLY valid JSON without explanations or markdown formatting.
             print(f"Error generating example: {e}")
             return None
     
-    async def generate_example_async(self, scenario: Dict[str, Any], format_type: str, language: str = "en") -> Optional[Dict[str, Any]]:
+    async def generate_example_async(self, scenario: Dict[str, Any], format_type: str, language: str = "en", custom_template: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Generate a single example asynchronously using an executor"""
         with concurrent.futures.ThreadPoolExecutor() as executor:
             return await asyncio.get_event_loop().run_in_executor(
-                executor, self.generate_example, scenario, format_type, language
+                executor, self.generate_example, scenario, format_type, language, custom_template
             )
     
     async def generate_examples_batch(
@@ -339,12 +352,26 @@ Return ONLY valid JSON without explanations or markdown formatting.
         format_type: str,
         count: int,
         subdomain: Optional[str] = None,
-        language: str = "en"
+        language: str = "en",
+        template_name: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Generate a batch of examples asynchronously"""
         examples = []
         tasks = []
         errors = []
+        
+        # Load custom template if specified
+        custom_template = None
+        if template_name:
+            try:
+                # Get template from database
+                prompts = db.get_prompts()
+                for p in prompts:
+                    if p['name'] == template_name:
+                        custom_template = p['content']
+                        break
+            except Exception as e:
+                print(f"Error loading template '{template_name}': {e}")
         
         # Generate scenario parameters
         scenarios = []
@@ -353,7 +380,7 @@ Return ONLY valid JSON without explanations or markdown formatting.
         
         # Create tasks for async generation
         for scenario in scenarios:
-            tasks.append(self.generate_example_async(scenario, format_type, language))
+            tasks.append(self.generate_example_async(scenario, format_type, language, custom_template))
         
         # Execute tasks with progress tracking
         examples_generated = 0
@@ -404,6 +431,7 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
         subdomain = params.get('subdomain')
         format_type = params.get('format', 'chat')
         language = params.get('language', 'en')
+        template_name = params.get('template')  # Get template name from params
         count = job['examples_requested']
         
         # Create generator
@@ -412,9 +440,9 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
         # Update job status
         db.update_generation_job(job_id, status="running")
         
-        # Generate examples
+        # Generate examples with template support
         examples, errors = await generator.generate_examples_batch(
-            job_id, domain, format_type, count, subdomain, language
+            job_id, domain, format_type, count, subdomain, language, template_name
         )
         
         # Create timestamp and dataset name
@@ -454,6 +482,24 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
             
             # Update dataset record with job information
             db.update_dataset(dataset_id, metadata={"job_id": job_id})
+            
+            # Trigger webhooks
+            get_webhook_manager().trigger_webhook("generation_completed", {
+                "job_id": job_id,
+                "dataset_id": dataset_id,
+                "examples_count": len(examples),
+                "status": "success"
+            })
+            
+            # Log to MLOps platforms
+            metrics = {
+                "examples_generated": len(examples),
+                "generation_time": (datetime.now() - datetime.fromisoformat(job['started_at'])).total_seconds(),
+                "errors": len(errors)
+            }
+            get_mlflow_logger().log_generation(job_id, params, metrics)
+            get_wandb_logger().log_generation(job_id, params, metrics)
+            
         else:
             # Update job status to failed
             db.update_generation_job(
@@ -462,6 +508,12 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
                 completed_at=datetime.now().isoformat(),
                 errors=["Failed to save examples"] + errors if errors else ["Failed to save examples"]
             )
+            
+            # Trigger failure webhook
+            get_webhook_manager().trigger_webhook("generation_failed", {
+                "job_id": job_id,
+                "error": "Failed to save examples"
+            })
     except Exception as e:
         print(f"Error in generation job {job_id}: {e}")
         # Update job status to failed
@@ -471,6 +523,12 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
             completed_at=datetime.now().isoformat(),
             errors=[str(e)]
         )
+        
+        # Trigger failure webhook
+        get_webhook_manager().trigger_webhook("generation_failed", {
+            "job_id": job_id,
+            "error": str(e)
+        })
 
 def create_generation_job(params: Dict[str, Any], examples_requested: int) -> int:
     """Create a new generation job"""

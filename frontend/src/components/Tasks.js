@@ -78,22 +78,22 @@ const Tasks = () => {
     onMutate: async (taskId) => {
       // Cancel current queries
       await queryClient.cancelQueries(['tasks']);
-      
+
       // Save previous state
       const previousTasks = queryClient.getQueryData(['tasks']);
-      
+
       // Optimistically update UI
       queryClient.setQueryData(['tasks'], (old) => ({
         ...old,
         tasks: old.tasks.filter((task) => task.id !== taskId),
       }));
-      
+
       return { previousTasks };
     },
     onError: (err, taskId, context) => {
       // Restore previous state on error
       queryClient.setQueryData(['tasks'], context.previousTasks);
-      
+
       toast({
         title: 'Error deleting task',
         description: err.message,
@@ -156,7 +156,7 @@ const Tasks = () => {
 
   return (
     <Box>
-      <Heading size="lg" mb={6}>Tasks</Heading>
+      <Heading size="md" mb={6}>Tasks</Heading>
 
       {/* Filters */}
       <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} mb={6} boxShadow="sm">
@@ -233,64 +233,64 @@ const Tasks = () => {
                   </Td>
                 </Tr>
               ) : filteredTasks.map((task) => (
-                  <Tr key={task.id} _hover={{ bg: 'gray.50' }}>
-                    <Td textAlign="center">{task.id}</Td>
-                    <Td textAlign="center">
-                      <Badge>
-                        {task.type}
-                      </Badge>
-                    </Td>
-                    <Td textAlign="center">
-                      <Badge colorScheme={getStatusColor(task.status)}>
-                        {task.status}
-                      </Badge>
-                    </Td>
-                    <Td textAlign="center">
-                      <Box>
-                        <Progress 
-                          value={task.progress * 100} 
-                          size="sm"
-                          colorScheme={getStatusColor(task.status)}
-                          borderRadius="md"
-                          mb={1}
-                        />
-                        <Text fontSize="xs">
-                          {task.progress_details || `${Math.round(task.progress * 100)}%`}
-                        </Text>
-                      </Box>
-                    </Td>
-                    <Td textAlign="center">{formatDate(task.created_at)}</Td>
-                    <Td textAlign="center">{formatDate(task.updated_at)}</Td>
-                    <Td textAlign="center">
-                      <Menu>
-                        <MenuButton
-                          as={IconButton}
-                          icon={<FiMoreVertical />}
-                          variant="ghost"
-                          size="sm"
-                          aria-label="Task options"
-                        />
-                        <MenuList>
-                          {task.status === 'running' || task.status === 'pending' ? (
-                            <MenuItem 
-                              icon={<FiXCircle />} 
-                              onClick={() => handleCancelTask(task.id)}
-                            >
-                              Cancel
-                            </MenuItem>
-                          ) : null}
-                          <MenuItem 
-                            icon={<FiTrash2 />} 
-                            color="red.500"
-                            onClick={() => handleDeleteTask(task.id)}
+                <Tr key={task.id} _hover={{ bg: 'gray.50' }}>
+                  <Td textAlign="center">{task.id}</Td>
+                  <Td textAlign="center">
+                    <Badge>
+                      {task.type}
+                    </Badge>
+                  </Td>
+                  <Td textAlign="center">
+                    <Badge colorScheme={getStatusColor(task.status)}>
+                      {task.status}
+                    </Badge>
+                  </Td>
+                  <Td textAlign="center">
+                    <Box>
+                      <Progress
+                        value={task.progress * 100}
+                        size="sm"
+                        colorScheme={getStatusColor(task.status)}
+                        borderRadius="md"
+                        mb={1}
+                      />
+                      <Text fontSize="xs">
+                        {task.progress_details || `${Math.round(task.progress * 100)}%`}
+                      </Text>
+                    </Box>
+                  </Td>
+                  <Td textAlign="center">{formatDate(task.created_at)}</Td>
+                  <Td textAlign="center">{formatDate(task.updated_at)}</Td>
+                  <Td textAlign="center">
+                    <Menu>
+                      <MenuButton
+                        as={IconButton}
+                        icon={<FiMoreVertical />}
+                        variant="ghost"
+                        size="sm"
+                        aria-label="Task options"
+                      />
+                      <MenuList>
+                        {task.status === 'running' || task.status === 'pending' ? (
+                          <MenuItem
+                            icon={<FiXCircle />}
+                            onClick={() => handleCancelTask(task.id)}
                           >
-                            Delete
+                            Cancel
                           </MenuItem>
-                        </MenuList>
-                      </Menu>
-                    </Td>
-                  </Tr>
-                ))
+                        ) : null}
+                        <MenuItem
+                          icon={<FiTrash2 />}
+                          color="red.500"
+                          onClick={() => handleDeleteTask(task.id)}
+                        >
+                          Delete
+                        </MenuItem>
+                      </MenuList>
+                    </Menu>
+                  </Td>
+                </Tr>
+              ))
               }
             </Tbody>
           </Table>

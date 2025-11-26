@@ -33,7 +33,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
-import { getDatasets, getModels, startQualityControl, getQualityStatus } from '../services/api';
+import { getDatasets, getProviders, getProviderModels, startQualityControl, getQualityStatus } from '../services/api';
 
 function QualityControl() {
   const [selectedDataset, setSelectedDataset] = useState(null);
@@ -56,10 +56,16 @@ function QualityControl() {
     queryFn: getDatasets
   });
 
+  // Fetch providers
+  const { data: providersData } = useQuery({
+    queryKey: ['providers'],
+    queryFn: getProviders,
+  });
+
   // Fetch models for selected provider
   const { data: modelsData, isLoading: isLoadingModels } = useQuery({
-    queryKey: ['models', provider],
-    queryFn: () => getModels(provider),
+    queryKey: ['providerModels', provider],
+    queryFn: () => getProviderModels(provider),
     enabled: !!provider
   });
 
@@ -158,7 +164,7 @@ function QualityControl() {
 
   return (
     <Box>
-      <Heading size="lg" mb={6}>Quality Control</Heading>
+      <Heading size="md" mb={6}>Quality Control</Heading>
 
       <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} p={6}>
         <CardBody>
@@ -167,8 +173,8 @@ function QualityControl() {
               <VStack spacing={6} align="stretch">
                 <FormControl>
                   <FormLabel>Dataset</FormLabel>
-                  <Tooltip 
-                    label={selectedDataset ? `${getDatasetName(selectedDataset)} (${datasets?.datasets?.find(d => d.id === selectedDataset)?.example_count} examples)` : "Select a dataset"} 
+                  <Tooltip
+                    label={selectedDataset ? `${getDatasetName(selectedDataset)} (${datasets?.datasets?.find(d => d.id === selectedDataset)?.example_count} examples)` : "Select a dataset"}
                     placement="top"
                     isDisabled={!selectedDataset}
                   >
@@ -197,16 +203,18 @@ function QualityControl() {
                     }}
                     maxWidth="300px"
                   >
-                    <option value="ollama">Ollama</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
+                    {providersData?.providers?.map((p) => (
+                      <option key={p.id} value={p.id} disabled={!p.available}>
+                        {p.name} {!p.available && '(API key required)'}
+                      </option>
+                    ))}
                   </Select>
                 </FormControl>
 
                 <FormControl>
                   <FormLabel>Model</FormLabel>
-                  <Tooltip 
-                    label={model || "Select a model"} 
+                  <Tooltip
+                    label={model || "Select a model"}
                     placement="top"
                     isDisabled={!model}
                   >
@@ -219,19 +227,10 @@ function QualityControl() {
                     >
                       {isLoadingModels ? (
                         <option>Loading models...</option>
-                      ) : provider === 'openai' ? (
-                        <>
-                          <option value="gpt-4o">GPT-4o</option>
-                          <option value="03-mini-high">03-mini-high</option>
-                        </>
-                      ) : provider === 'anthropic' ? (
-                        <>
-                          <option value="claude-3-7-sonnet-20250219">Claude 3.7 Sonnet</option>
-                        </>
-                      ) : modelsData?.models?.length > 0 ? (
-                        modelsData.models.map((model) => (
-                          <option key={model} value={model}>
-                            {model}
+                      ) : Array.isArray(modelsData) && modelsData.length > 0 ? (
+                        modelsData.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
                           </option>
                         ))
                       ) : (
@@ -318,7 +317,7 @@ function QualityControl() {
                 <Text fontSize="lg" mb={4}>
                   Analyzing {getDatasetName(jobStatus.dataset_id)}
                 </Text>
-                
+
                 <HStack spacing={4} mb={4}>
                   <Badge colorScheme={jobStatus.status === 'completed' ? 'green' : jobStatus.status === 'failed' ? 'red' : 'blue'}>
                     {jobStatus.status}

@@ -24,15 +24,11 @@ providers:
 
   # OpenAI - Cloud provider
   openai:
-    enabled: false
+    enabled: true
     api_key: "${OPENAI_API_KEY}"  # Environment variable
-    default_model: "gpt-4-turbo-preview"
+    default_model: "gpt-5"
     timeout: 120
-    available_models:
-      - "gpt-4-turbo-preview"
-      - "gpt-4"
-      - "gpt-3.5-turbo"
-      - "gpt-3.5-turbo-16k"
+    available_models: []  # Models are loaded dynamically from API or custom models in Settings
     description: "OpenAI GPT models - high quality, cloud-based"
 
   # Anthropic Claude - Cloud provider

@@ -36,12 +36,6 @@ export const getCommonParams = async () => {
   return response.data;
 };
 
-// Provider endpoints
-export const getProviders = async () => {
-  const response = await api.get('/providers');
-  return response.data;
-};
-
 export const getModels = async (provider) => {
   const response = await api.get('/providers/models', {
     params: { provider },
@@ -141,18 +135,18 @@ export const deleteDataset = async (datasetId) => {
 export const uploadDataset = async (file, params) => {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   // Add additional params to form data
   Object.entries(params).forEach(([key, value]) => {
     if (value) formData.append(key, value);
   });
-  
+
   const response = await api.post('/datasets/upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   });
-  
+
   return response.data;
 };
 
@@ -255,6 +249,141 @@ export const updateExample = async (datasetId, exampleId, content) => {
     console.error('Error updating example:', error);
     throw error;
   }
+};
+
+// Prompts endpoints
+export const getPrompts = async () => {
+  const response = await api.get('/prompts');
+  return response.data;
+};
+
+export const getPrompt = async (promptId) => {
+  const response = await api.get(`/prompts/${promptId}`);
+  return response.data;
+};
+
+export const createPrompt = async (promptData) => {
+  const response = await api.post('/prompts', promptData);
+  return response.data;
+};
+
+export const updatePrompt = async (promptId, promptData) => {
+  const response = await api.put(`/prompts/${promptId}`, promptData);
+  return response.data;
+};
+
+export const deletePrompt = async (promptId) => {
+  const response = await api.delete(`/prompts/${promptId}`);
+  return response.data;
+};
+
+// Reviews endpoints
+export const getReviews = async (datasetId) => {
+  const response = await api.get(`/datasets/${datasetId}/reviews`);
+  return response.data;
+};
+
+export const createReview = async (reviewData) => {
+  const response = await api.post('/reviews', reviewData);
+  return response.data;
+};
+
+// Comments endpoints
+export const getComments = async (datasetId) => {
+  const response = await api.get(`/datasets/${datasetId}/comments`);
+  return response.data;
+};
+
+export const createComment = async (commentData) => {
+  const response = await api.post('/comments', commentData);
+  return response.data;
+};
+
+// Versions endpoints
+export const getVersions = async (datasetId) => {
+  const response = await api.get(`/datasets/${datasetId}/versions`);
+  return response.data;
+};
+
+export const createVersion = async (versionData) => {
+  const response = await api.post('/versions', versionData);
+  return response.data;
+};
+
+// Search examples
+export const searchExamples = async (datasetId, query, params = {}) => {
+  const response = await api.get(`/datasets/${datasetId}/examples/search`, {
+    params: { q: query, ...params }
+  });
+  return response.data;
+};
+
+// Template API
+export const getTemplates = async (domain) => {
+  const params = domain ? { domain } : {};
+  const response = await api.get('/templates', { params });
+  return response.data;
+};
+
+export const createTemplate = async (templateData) => {
+  const response = await api.post('/templates', templateData);
+  return response.data;
+};
+
+export const updateTemplate = async (id, templateData) => {
+  const response = await api.put(`/templates/${id}`, templateData);
+  return response.data;
+};
+
+export const deleteTemplate = async (id) => {
+  const response = await api.delete(`/templates/${id}`);
+  return response.data;
+};
+
+export const getTemplateVersions = async (id) => {
+  const response = await api.get(`/templates/${id}/versions`);
+  return response.data;
+};
+
+export const restoreTemplateVersion = async (templateId, versionId) => {
+  const response = await api.post(`/templates/${templateId}/restore/${versionId}`);
+  return response.data;
+};
+
+// Analytics endpoints
+export const getAnalyticsSummary = async (days = 30) => {
+  const response = await api.get('/analytics/summary', {
+    params: { days }
+  });
+  return response.data;
+};
+
+// Model management endpoints
+export const getProviders = async () => {
+  const response = await api.get('/models/providers');
+  return response.data;
+};
+
+export const getProviderModels = async (provider) => {
+  const response = await api.get(`/models/${provider}`);
+  return response.data;
+};
+
+export const getModelInfo = async (provider, modelId) => {
+  const response = await api.get(`/models/${provider}/${modelId}/info`);
+  return response.data;
+};
+
+export const estimateCost = async (provider, model, examplesCount, avgTokens = 1000) => {
+  const response = await api.get('/analytics/cost-estimate', {
+    params: {
+      provider,
+      model,
+      examples_count: examplesCount,
+      avg_tokens_per_example: avgTokens
+    }
+  });
+  return response.data;
 };
 
 export default api;

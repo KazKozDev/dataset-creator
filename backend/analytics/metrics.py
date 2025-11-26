@@ -202,7 +202,8 @@ class AnalyticsTracker:
             "generation": self._aggregate_generation_metrics(metrics),
             "api_usage": self._aggregate_api_metrics(metrics),
             "exports": self._aggregate_export_metrics(metrics),
-            "quality": self._aggregate_quality_metrics(metrics)
+            "quality": self._aggregate_quality_metrics(metrics),
+            "daily_stats": self._aggregate_daily_stats(metrics, start_date, end_date)
         }
 
         return summary
@@ -308,6 +309,74 @@ class AnalyticsTracker:
             "total_issues_found": total_issues,
             "average_quality_score": round(avg_score, 2)
         }
+
+    def _aggregate_daily_stats(
+        self, 
+        metrics: List[Dict[str, Any]], 
+        start_date: datetime, 
+        end_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """Aggregate metrics by day for charts"""
+        from collections import defaultdict
+        
+        # Group metrics by day
+        daily_data = defaultdict(lambda: {
+            "examples_generated": 0,
+            "total_cost": 0.0,
+            "quality_scores": []
+        })
+        
+        for metric in metrics:
+            try:
+                # Parse timestamp
+                timestamp_str = metric.get("timestamp")
+                if not timestamp_str:
+                    continue
+                    
+                timestamp = datetime.fromisoformat(timestamp_str)
+                date_key = timestamp.date().isoformat()
+                
+                # Aggregate generation metrics
+                if metric.get("type") == "generation":
+                    daily_data[date_key]["examples_generated"] += metric.get("examples_generated", 0)
+                    daily_data[date_key]["total_cost"] += metric.get("cost_estimate", 0.0)
+                
+                # Aggregate quality scores
+                elif metric.get("type") == "quality_check":
+                    score = metric.get("average_score")
+                    if score is not None:
+                        daily_data[date_key]["quality_scores"].append(score)
+                        
+            except (ValueError, AttributeError):
+                continue
+        
+        # Build daily stats list
+        daily_stats = []
+        current_date = start_date.date()
+        end = end_date.date()
+        
+        while current_date <= end:
+            date_key = current_date.isoformat()
+            data = daily_data.get(date_key, {
+                "examples_generated": 0,
+                "total_cost": 0.0,
+                "quality_scores": []
+            })
+            
+            # Calculate average quality
+            quality_scores = data.get("quality_scores", [])
+            average_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0
+            
+            daily_stats.append({
+                "date": date_key,
+                "examples_generated": data.get("examples_generated", 0),
+                "total_cost": round(data.get("total_cost", 0.0), 4),
+                "average_quality": round(average_quality, 2)
+            })
+            
+            current_date += timedelta(days=1)
+        
+        return daily_stats
 
     def _append_to_file(self, metric: Dict[str, Any]) -> None:
         """Append metric to file"""

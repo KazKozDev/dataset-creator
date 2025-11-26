@@ -37,6 +37,8 @@ import {
   FormLabel,
   useDisclosure,
   useColorModeValue,
+  VStack,
+  HStack,
 } from '@chakra-ui/react';
 import {
   FiSearch,
@@ -58,21 +60,24 @@ const Datasets = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { isOpen: isUploadOpen, onOpen: onUploadOpen, onClose: onUploadClose } = useDisclosure();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [domainFilter, setDomainFilter] = useState('');
   const [formatFilter, setFormatFilter] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('DESC');
-  
+  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'week', 'month', 'custom'
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadName, setUploadName] = useState('');
   const [uploadDomain, setUploadDomain] = useState('unknown');
   const [uploadDescription, setUploadDescription] = useState('');
-  
+
   const cardBg = useColorModeValue('white', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
-  
+
   // Fetch datasets
   const {
     data: datasetsData,
@@ -89,7 +94,7 @@ const Datasets = () => {
       sort_order: sortOrder,
     })
   });
-  
+
   // Delete dataset mutation
   const deleteMutation = useMutation({
     mutationFn: deleteDataset,
@@ -112,7 +117,7 @@ const Datasets = () => {
       });
     }
   });
-  
+
   // Upload dataset mutation
   const uploadMutation = useMutation({
     mutationFn: (formData) => {
@@ -121,7 +126,7 @@ const Datasets = () => {
         domain: uploadDomain || undefined,
         description: uploadDescription || undefined,
       };
-      
+
       return uploadDataset(uploadFile, params);
     },
     onSuccess: (data) => {
@@ -134,7 +139,7 @@ const Datasets = () => {
         duration: 3000,
         isClosable: true,
       });
-      
+
       // Navigate to the new dataset
       navigate(`/datasets/${data.dataset_id}`);
     },
@@ -148,7 +153,7 @@ const Datasets = () => {
       });
     },
   });
-  
+
   // Import existing file mutation
   const importMutation = useMutation({
     mutationFn: scanForDatasets,
@@ -181,34 +186,59 @@ const Datasets = () => {
       });
     },
   });
-  
-  // Filter datasets based on search query
+
+  // Filter datasets based on search query and date
   const filteredDatasets = datasetsData?.datasets
     ? datasetsData.datasets.filter((dataset) => {
-        const searchLower = searchQuery.toLowerCase();
-        
-        return (
-          dataset.name.toLowerCase().includes(searchLower) ||
-          dataset.domain.toLowerCase().includes(searchLower) ||
-          (dataset.description && dataset.description.toLowerCase().includes(searchLower))
-        );
-      })
+      const searchLower = searchQuery.toLowerCase();
+
+      // Search filter
+      const matchesSearch = (
+        dataset.name.toLowerCase().includes(searchLower) ||
+        dataset.domain.toLowerCase().includes(searchLower) ||
+        (dataset.description && dataset.description.toLowerCase().includes(searchLower))
+      );
+
+      // Date filter
+      let matchesDate = true;
+      if (dateFilter !== 'all') {
+        const datasetDate = new Date(dataset.created_at);
+        const now = new Date();
+
+        if (dateFilter === 'week') {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          matchesDate = datasetDate >= weekAgo;
+        } else if (dateFilter === 'month') {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          matchesDate = datasetDate >= monthAgo;
+        } else if (dateFilter === 'custom') {
+          if (customStartDate) {
+            matchesDate = matchesDate && datasetDate >= new Date(customStartDate);
+          }
+          if (customEndDate) {
+            matchesDate = matchesDate && datasetDate <= new Date(customEndDate);
+          }
+        }
+      }
+
+      return matchesSearch && matchesDate;
+    })
     : [];
-  
+
   // Extract unique domains for filter
   const uniqueDomains = datasetsData?.datasets
     ? [...new Set(datasetsData.datasets.map((d) => d.domain))]
     : [];
-  
+
   const handleDeleteDataset = (id) => {
     if (window.confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
       deleteMutation.mutate(id);
     }
   };
-  
+
   const handleUploadSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!uploadFile) {
       toast({
         title: 'No file selected',
@@ -219,26 +249,26 @@ const Datasets = () => {
       });
       return;
     }
-    
+
     uploadMutation.mutate();
   };
-  
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       setUploadFile(file);
-      
+
       // Auto-set name from filename if not provided
       if (!uploadName) {
         setUploadName(file.name.replace(/\.[^/.]+$/, ''));
       }
     }
   };
-  
+
   return (
     <Box>
       <Flex justify="space-between" align="center" mb={6}>
-        <Heading size="lg">Datasets</Heading>
+        <Heading size="md">Datasets</Heading>
         <Flex>
           <Button
             leftIcon={<FiUpload />}
@@ -254,7 +284,7 @@ const Datasets = () => {
           </Button>
         </Flex>
       </Flex>
-      
+
       {/* Filters */}
       <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} mb={6} boxShadow="sm">
         <CardBody>
@@ -270,7 +300,7 @@ const Datasets = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </InputGroup>
-            
+
             {/* Domain Filter */}
             <Select
               placeholder="All Domains"
@@ -284,7 +314,7 @@ const Datasets = () => {
                 </option>
               ))}
             </Select>
-            
+
             {/* Format Filter */}
             <Select
               placeholder="All Formats"
@@ -295,7 +325,65 @@ const Datasets = () => {
               <option value="chat">Chat</option>
               <option value="instruction">Instruction</option>
             </Select>
-            
+
+            {/* Date Filter */}
+            <VStack align="stretch" spacing={2}>
+              <HStack spacing={2}>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'all' ? 'solid' : 'outline'}
+                  colorScheme={dateFilter === 'all' ? 'blue' : 'gray'}
+                  onClick={() => setDateFilter('all')}
+                >
+                  All Time
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'week' ? 'solid' : 'outline'}
+                  colorScheme={dateFilter === 'week' ? 'blue' : 'gray'}
+                  onClick={() => setDateFilter('week')}
+                >
+                  Last 7 Days
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'month' ? 'solid' : 'outline'}
+                  colorScheme={dateFilter === 'month' ? 'blue' : 'gray'}
+                  onClick={() => setDateFilter('month')}
+                >
+                  Last 30 Days
+                </Button>
+                <Button
+                  size="sm"
+                  variant={dateFilter === 'custom' ? 'solid' : 'outline'}
+                  colorScheme={dateFilter === 'custom' ? 'blue' : 'gray'}
+                  onClick={() => setDateFilter('custom')}
+                >
+                  Custom Range
+                </Button>
+              </HStack>
+
+              {dateFilter === 'custom' && (
+                <HStack spacing={2}>
+                  <Input
+                    type="date"
+                    size="sm"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    placeholder="Start date"
+                  />
+                  <Text fontSize="sm">to</Text>
+                  <Input
+                    type="date"
+                    size="sm"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    placeholder="End date"
+                  />
+                </HStack>
+              )}
+            </VStack>
+
             {/* Sort Options */}
             <Flex align="center">
               <Text mr={2} whiteSpace="nowrap">
@@ -319,12 +407,12 @@ const Datasets = () => {
               </Select>
             </Flex>
           </Flex>
-          
+
           <Flex justifyContent="space-between" alignItems="center">
             <Text color="gray.600" fontSize="sm">
               {filteredDatasets.length} datasets found
             </Text>
-            
+
             <Flex>
               <Button
                 size="sm"
@@ -336,7 +424,7 @@ const Datasets = () => {
               >
                 Refresh
               </Button>
-              
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -350,7 +438,7 @@ const Datasets = () => {
           </Flex>
         </CardBody>
       </Card>
-      
+
       {/* Error state */}
       {isError && (
         <Alert status="error" mb={6}>
@@ -358,9 +446,9 @@ const Datasets = () => {
           {error.response?.data?.detail || 'Failed to load datasets. Please try again.'}
         </Alert>
       )}
-      
+
       {/* Datasets Table */}
-      <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} boxShadow="sm" overflow="hidden">
+      <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} boxShadow="sm">
         <Box overflowX="auto">
           <Table variant="simple">
             <Thead>
@@ -383,30 +471,61 @@ const Datasets = () => {
               ) : filteredDatasets.length === 0 ? (
                 <Tr>
                   <Td colSpan={6} textAlign="center" py={10}>
-                    No datasets found. Upload or create a new dataset.
+                    <VStack spacing={4}>
+                      <Text fontSize="lg" fontWeight="medium" color="gray.600">
+                        {searchQuery || domainFilter || formatFilter
+                          ? 'No datasets match your filters'
+                          : 'No datasets found'}
+                      </Text>
+                      <Text fontSize="sm" color="gray.500">
+                        {searchQuery || domainFilter || formatFilter
+                          ? 'Try adjusting your search or filters'
+                          : 'Get started by creating or uploading a dataset'}
+                      </Text>
+                      {!searchQuery && !domainFilter && !formatFilter && (
+                        <HStack spacing={3}>
+                          <Button
+                            leftIcon={<FiPlus />}
+                            colorScheme="blue"
+                            size="sm"
+                            onClick={() => navigate('/generator')}
+                          >
+                            Generate Dataset
+                          </Button>
+                          <Button
+                            leftIcon={<FiUpload />}
+                            variant="outline"
+                            size="sm"
+                            onClick={onUploadOpen}
+                          >
+                            Upload Dataset
+                          </Button>
+                        </HStack>
+                      )}
+                    </VStack>
                   </Td>
                 </Tr>
               ) : (
                 filteredDatasets.map((dataset) => (
-                  <Tr 
-                    key={dataset.id} 
+                  <Tr
+                    key={dataset.id}
                     _hover={{ bg: 'gray.50' }}
                     transition="background-color 0.2s"
                   >
                     <Td>
                       <Box>
-                        <Text 
-                          fontWeight="medium" 
-                          cursor="pointer" 
+                        <Text
+                          fontWeight="medium"
+                          cursor="pointer"
                           onClick={() => navigate(`/datasets/${dataset.id}`)}
                           _hover={{ color: 'blue.500' }}
                         >
                           {dataset.name}
                         </Text>
                         {dataset.description && (
-                          <Text 
-                            fontSize="sm" 
-                            color="gray.600" 
+                          <Text
+                            fontSize="sm"
+                            color="gray.600"
                             noOfLines={1}
                             pl={1}
                           >
@@ -438,8 +557,8 @@ const Datasets = () => {
                           <MenuItem icon={<FiBarChart2 />} as={Link} to={`/quality?dataset=${dataset.id}`}>
                             Quality Check
                           </MenuItem>
-                          <MenuItem icon={<FiDownload />} as="a" href={`/api/datasets/${dataset.id}/download`}>
-                            Download
+                          <MenuItem icon={<FiDownload />} as={Link} to={`/datasets/${dataset.id}?export=true`}>
+                            Export
                           </MenuItem>
                           <MenuItem
                             icon={<FiTrash2 />}
@@ -458,7 +577,7 @@ const Datasets = () => {
           </Table>
         </Box>
       </Card>
-      
+
       {/* Upload Modal */}
       <Modal isOpen={isUploadOpen} onClose={onUploadClose}>
         <ModalOverlay />
@@ -474,7 +593,7 @@ const Datasets = () => {
                   Only JSONL files in chat or instruction format are supported
                 </Text>
               </FormControl>
-              
+
               <FormControl mb={4}>
                 <FormLabel>Dataset Name</FormLabel>
                 <Input
@@ -483,7 +602,7 @@ const Datasets = () => {
                   onChange={(e) => setUploadName(e.target.value)}
                 />
               </FormControl>
-              
+
               <FormControl mb={4}>
                 <FormLabel>Domain</FormLabel>
                 <Select
@@ -499,7 +618,7 @@ const Datasets = () => {
                   <option value="unknown">Unknown</option>
                 </Select>
               </FormControl>
-              
+
               <FormControl>
                 <FormLabel>Description</FormLabel>
                 <Input
@@ -509,7 +628,7 @@ const Datasets = () => {
                 />
               </FormControl>
             </ModalBody>
-            
+
             <ModalFooter>
               <Button variant="ghost" mr={3} onClick={onUploadClose}>
                 Cancel

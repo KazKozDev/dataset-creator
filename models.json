@@ -1,0 +1,46 @@
+{
+    "providers": {
+        "ollama": {
+            "name": "Ollama (Local)",
+            "type": "local",
+            "requires_api_key": false,
+            "models": []
+        },
+        "openai": {
+            "name": "OpenAI",
+            "type": "paid",
+            "requires_api_key": true,
+            "api_key_env": "OPENAI_API_KEY",
+            "models": []
+        },
+        "anthropic": {
+            "name": "Anthropic (Claude)",
+            "type": "paid",
+            "requires_api_key": true,
+            "api_key_env": "ANTHROPIC_API_KEY",
+            "models": []
+        },
+        "google": {
+            "name": "Google (Gemini)",
+            "type": "paid",
+            "requires_api_key": true,
+            "api_key_env": "GOOGLE_API_KEY",
+            "models": []
+        },
+        "mistral": {
+            "name": "Mistral AI",
+            "type": "paid",
+            "requires_api_key": true,
+            "api_key_env": "MISTRAL_API_KEY",
+            "models": []
+        }
+    },
+    "default_provider": "ollama",
+    "default_model": {
+        "ollama": "llama3.2",
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-3-5-haiku-20241022",
+        "google": "gemini-1.5-flash",
+        "mistral": "mistral-small-latest"
+    }
+}

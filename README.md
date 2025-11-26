@@ -1,109 +1,135 @@
+# LLM Dataset Creator
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/503b816e-f2b7-4e75-8c10-8a13b1e755ca" alt="logo" width="150"/>
-</p>
-  
+Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestration, quality control, and multiple export formats.
 
+## Who Is This For
 
-<p align="center">
-<b>Synthetic Data Foundry </b>
-  
-  A synthetic data generation platform for creating and managing training datasets for LLM fine-tuning. Leverages foundation models to generate domain-specific examples through an intuitive web interface. Helping ML engineers and organizations easily generate high-quality data for custom AI solutions.
+- **AI/ML Teams** building custom chatbots and assistants
+- **Enterprises** fine-tuning LLMs on domain-specific data (support, legal, medical, sales)
+- **Startups** creating training data without manual annotation
+- **Researchers** generating synthetic datasets for experiments
 
-![Dataset Creator Interface](https://github.com/user-attachments/assets/3dedfdaa-0ea2-4667-b43d-ba6fe68fa985)
+## Use Cases
 
-![generator](https://github.com/user-attachments/assets/d6654f21-dd34-4c2c-a76a-cc5b4bd14712)
+- Customer support chatbots
+- Internal knowledge assistants
+- Domain-specific Q&A systems
+- Sales and onboarding bots
+- Educational tutors
 
-## □ Core Features
+## Features
 
-### Foundation Model Integration
-- **Multi-Provider Support**: Unified API framework for seamless integration with Ollama, OpenAI, and other LLM providers
+- **Generation**: 12+ domains (support, medical, legal, education, sales, etc.)
+- **Multi-Agent Orchestration**: Ensemble Cascade, Swarm Collective Convergence, Evolutionary Agents Fusion, Lattice Network Sync
+- **Quality Control**: Toxicity detection, PII filtering, deduplication, diversity analysis
+- **Export Formats**: HuggingFace, OpenAI, Alpaca, LangChain
+- **Versioning**: Dataset diff, merge, version history
+- **Collaboration**: Users, roles, permissions, review workflows
 
-### Training Data Engineering
-- **Domain-Specific Generation Pipeline**: Create datasets tailored to vertical applications with configurable quality parameters
-- **Batch Processing Orchestration**: Generate and process multiple entries with distributed task management
+## Tech Stack
 
-### Quality Assurance System
-- **Data Validation Framework**: Ensure dataset quality through comprehensive validation protocols
-- **Modern Interface Architecture**: React/Chakra UI implementation with advanced state management
+- **Backend**: FastAPI, SQLite, Python 3.9+
+- **Frontend**: React 18, Chakra UI
+- **LLM Providers**: Ollama (local), OpenAI, Anthropic, Google, Mistral
 
-### Production Deployment
-1. Clone the repository:
+## Quick Start (Docker)
+
 ```bash
-git clone https://github.com/KazKozDev/dataset-creator.git
+cp .env.example .env  # Add API keys
+docker-compose up --build
 ```
 
-2. Change to the project directory:
+Open http://localhost:3000
+
+## Manual Installation
+
 ```bash
-cd dataset-creator
-```
-
-3. Deploy with containerization:
-```bash
-docker-compose up -d
-```
-
-Access the application at: http://localhost:3000
-
-### Development Environment
-
-#### Backend Services:
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # or venv\Scripts\activate on Windows
+# Backend
 pip install -r requirements.txt
-uvicorn main:app --reload
-```
+python -m spacy download en_core_web_sm
+cp .env.example .env
 
-#### Frontend Application:
-```bash
+# Frontend
 cd frontend
 npm install
+```
+
+## Usage
+
+```bash
+# Terminal 1
+cd backend
+uvicorn main:app --reload --port 8000
+
+# Terminal 2
+cd frontend
 npm start
 ```
 
-## □ Architecture
+Open http://localhost:3000
 
-The application implements a cloud-native architecture with emphasis on scalability:
+## Configuration
 
-| Component | Technology | Implementation Details |
-|-----------|------------|---------|
-| Frontend  | React, Chakra UI | Responsive SPA with comprehensive state management |
-| API Layer | Python FastAPI | RESTful services with asynchronous processing capabilities |
-| Database  | PostgreSQL | Optimized schema for dataset versioning and metadata |
-| Deployment| Docker | Containerized services with environment isolation |
+Set API keys in `backend/.env`:
 
-## □ Usage
+```
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_API_KEY=...
+MISTRAL_API_KEY=...
+```
 
-### Provider Configuration
-1. Settings → Select provider → Configure authentication parameters
+For local inference, install [Ollama](https://ollama.ai) and pull a model:
 
-### Dataset Generation Workflow
-1. Generator → Select domain → Define quality parameters → Execute pipeline
+```bash
+ollama pull llama3.2
+```
 
-### Quality Management
-1. Open dataset → Run validation suite → Apply improvements → Export production-ready dataset
+## Domains
 
-## □ API Integration
+support, medical, legal, education, business, technical, sales, financial, research, coaching, creative, meetings, ecommerce
 
-Access comprehensive API documentation at http://localhost:8000/docs after deployment.
+## Multi-Agent Modes
 
-Key service endpoints:
-- `GET /api/datasets` - List datasets with quality metrics
-- `POST /api/datasets` - Create dataset with configuration parameters
-- `GET /api/providers` - List available LLM providers with capabilities
-- `GET /api/tasks` - Monitor task execution status
+| Mode | Agents | Best For |
+|------|--------|----------|
+| Ensemble Cascade | Scout, Gatherer, Mutator, Selector | Volume + diversity |
+| Swarm Collective Convergence | Scout, Mutagen, Crossover | Iterative refinement |
+| Evolutionary Agents Fusion | Scout, Exploder, Cooler, Synthesizer | Creative expansion |
+| Lattice Network Sync | Gauge, Fermion, Higgs, Yukawa | Quality through selection |
 
-## □ License
+See [AGENTS.md](AGENTS.md) for details.
 
-MIT License. See [LICENSE](https://github.com/KazKozDev/dataset-creator/blob/main/LICENSE) file for details.
+## Project Structure
 
----
+```
+backend/
+  main.py           # FastAPI app
+  generator.py      # Dataset generation
+  quality.py        # Quality control
+  domains.py        # Domain definitions
+  llm_providers.py  # LLM integrations
+  agents/           # Multi-agent orchestration
+  exporters/        # Export formats
+  quality_advanced/ # Toxicity, dedup, diversity
+  versioning/       # Diff, merge
+  collaboration/    # Users, permissions
+frontend/
+  src/components/   # React components
+```
 
+## API
 
-If you like this project, please give it a star ⭐
+Base URL: `http://localhost:8000`
 
-For questions, feedback, or support, reach out to:
+- `POST /api/generator/start` - Start generation task
+- `GET /api/datasets` - List datasets
+- `GET /api/datasets/{id}` - Get dataset
+- `POST /api/export/{id}` - Export dataset
+- `GET /api/quality/{id}` - Quality report
 
-[Artem KK](https://www.linkedin.com/in/kazkozdev/) | [GitHub Issues](https://github.com/KazKozDev/dataset-creator/issues)
+Full API docs: http://localhost:8000/docs
+
+## License
+
+MIT

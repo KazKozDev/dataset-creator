@@ -754,6 +754,248 @@ DOMAINS = {
                 "large_group": 25           # Large group (11+ people) (25%)
             }
         }
+    },
+    
+    # 13. E-commerce
+    "ecommerce": {
+        "name": "E-commerce",
+        "description": "Online shopping, product listings, and customer interactions",
+        "examples": ["product descriptions", "order tracking", "customer reviews"],
+        "subdomains": {
+            "product_catalog": {
+                "name": "Product Catalog",
+                "description": "Product listings and descriptions",
+                "scenarios": ["product descriptions", "specifications", "feature highlights"]
+            },
+            "customer_service": {
+                "name": "Customer Service",
+                "description": "E-commerce customer support",
+                "scenarios": ["order inquiries", "shipping questions", "return requests"]
+            },
+            "checkout_assistance": {
+                "name": "Checkout Assistance",
+                "description": "Helping customers complete purchases",
+                "scenarios": ["payment issues", "promo codes", "shipping options"]
+            },
+            "product_recommendations": {
+                "name": "Product Recommendations",
+                "description": "Personalized product suggestions",
+                "scenarios": ["similar products", "bundle suggestions", "upselling"]
+            },
+            "reviews_qa": {
+                "name": "Reviews and Q&A",
+                "description": "Customer reviews and product questions",
+                "scenarios": ["review responses", "product questions", "comparison requests"]
+            }
+        },
+        "specific_params": {
+            "interaction_types": {
+                "product_inquiry": 30,
+                "order_support": 25,
+                "recommendation": 20,
+                "review_related": 15,
+                "checkout_help": 10
+            },
+            "product_categories": {
+                "electronics": 20,
+                "fashion": 20,
+                "home_goods": 15,
+                "beauty": 15,
+                "food_beverage": 10,
+                "books_media": 10,
+                "sports": 10
+            },
+            "customer_journey": {
+                "browsing": 30,
+                "consideration": 25,
+                "purchase": 20,
+                "post_purchase": 15,
+                "loyalty": 10
+            }
+        }
+    },
+    
+    # 14. HR and Recruitment
+    "hr": {
+        "name": "HR and Recruitment",
+        "description": "Human resources, recruitment, and employee management",
+        "examples": ["job descriptions", "interview questions", "onboarding materials"],
+        "subdomains": {
+            "recruitment": {
+                "name": "Recruitment",
+                "description": "Hiring and candidate management",
+                "scenarios": ["job postings", "candidate screening", "interview scheduling"]
+            },
+            "onboarding": {
+                "name": "Onboarding",
+                "description": "New employee integration",
+                "scenarios": ["welcome materials", "training schedules", "policy explanations"]
+            },
+            "performance_management": {
+                "name": "Performance Management",
+                "description": "Employee performance and development",
+                "scenarios": ["performance reviews", "goal setting", "feedback sessions"]
+            },
+            "employee_relations": {
+                "name": "Employee Relations",
+                "description": "Workplace issues and employee support",
+                "scenarios": ["conflict resolution", "policy questions", "benefits inquiries"]
+            },
+            "compensation_benefits": {
+                "name": "Compensation and Benefits",
+                "description": "Salary, benefits, and compensation management",
+                "scenarios": ["salary discussions", "benefits enrollment", "compensation analysis"]
+            }
+        },
+        "specific_params": {
+            "hr_functions": {
+                "recruitment": 30,
+                "employee_development": 25,
+                "compensation": 20,
+                "employee_relations": 15,
+                "compliance": 10
+            },
+            "employee_levels": {
+                "entry_level": 30,
+                "mid_level": 35,
+                "senior_level": 25,
+                "executive": 10
+            },
+            "communication_types": {
+                "formal_documentation": 40,
+                "informal_communication": 30,
+                "policy_explanation": 20,
+                "coaching_feedback": 10
+            }
+        }
+    },
+    
+    # 15. Marketing
+    "marketing": {
+        "name": "Marketing",
+        "description": "Marketing campaigns, content creation, and brand communication",
+        "examples": ["ad copy", "social media posts", "email campaigns"],
+        "subdomains": {
+            "content_marketing": {
+                "name": "Content Marketing",
+                "description": "Blog posts, articles, and educational content",
+                "scenarios": ["blog posts", "whitepapers", "case studies"]
+            },
+            "social_media": {
+                "name": "Social Media",
+                "description": "Social media content and engagement",
+                "scenarios": ["social posts", "community management", "influencer outreach"]
+            },
+            "email_marketing": {
+                "name": "Email Marketing",
+                "description": "Email campaigns and newsletters",
+                "scenarios": ["promotional emails", "newsletters", "drip campaigns"]
+            },
+            "advertising": {
+                "name": "Advertising",
+                "description": "Ad copy and campaign materials",
+                "scenarios": ["ad copy", "landing pages", "campaign messaging"]
+            },
+            "brand_messaging": {
+                "name": "Brand Messaging",
+                "description": "Brand voice and positioning",
+                "scenarios": ["brand guidelines", "value propositions", "taglines"]
+            }
+        },
+        "specific_params": {
+            "content_types": {
+                "social_media": 25,
+                "email": 25,
+                "blog_article": 20,
+                "ad_copy": 20,
+                "video_script": 10
+            },
+            "marketing_goals": {
+                "awareness": 30,
+                "consideration": 25,
+                "conversion": 25,
+                "retention": 15,
+                "advocacy": 5
+            },
+            "channels": {
+                "digital": 40,
+                "social": 30,
+                "email": 20,
+                "traditional": 10
+            },
+            "tone_styles": {
+                "professional": 30,
+                "casual_friendly": 30,
+                "inspirational": 20,
+                "humorous": 15,
+                "urgent": 5
+            }
+        }
+    },
+    
+    # 16. Gaming
+    "gaming": {
+        "name": "Gaming",
+        "description": "Game narratives, NPC dialogues, and interactive scenarios",
+        "examples": ["NPC dialogues", "quest descriptions", "game tutorials"],
+        "subdomains": {
+            "npc_dialogue": {
+                "name": "NPC Dialogue",
+                "description": "Non-player character conversations",
+                "scenarios": ["merchant dialogues", "quest givers", "companion interactions"]
+            },
+            "quest_content": {
+                "name": "Quest Content",
+                "description": "Quest descriptions and objectives",
+                "scenarios": ["quest briefings", "objective updates", "quest completions"]
+            },
+            "game_narrative": {
+                "name": "Game Narrative",
+                "description": "Story and lore content",
+                "scenarios": ["cutscene dialogue", "lore entries", "character backstories"]
+            },
+            "tutorial_content": {
+                "name": "Tutorial Content",
+                "description": "Game instructions and tutorials",
+                "scenarios": ["gameplay tutorials", "mechanic explanations", "tips and hints"]
+            },
+            "item_descriptions": {
+                "name": "Item Descriptions",
+                "description": "In-game item and equipment descriptions",
+                "scenarios": ["weapon descriptions", "consumable items", "collectibles"]
+            }
+        },
+        "specific_params": {
+            "content_types": {
+                "dialogue": 35,
+                "quest": 25,
+                "narrative": 20,
+                "tutorial": 15,
+                "item_description": 5
+            },
+            "game_genres": {
+                "rpg": 25,
+                "action_adventure": 20,
+                "strategy": 15,
+                "simulation": 15,
+                "mmo": 15,
+                "casual": 10
+            },
+            "narrative_tones": {
+                "epic_heroic": 25,
+                "dark_gritty": 20,
+                "humorous": 20,
+                "mysterious": 15,
+                "lighthearted": 15,
+                "horror": 5
+            },
+            "interaction_types": {
+                "linear_dialogue": 40,
+                "branching_choices": 30,
+                "dynamic_response": 20,
+                "ambient_dialogue": 10
+            }
+        }
     }
 }
 
@@ -800,10 +1042,14 @@ TRANSLATIONS = {
         "technical": {"en": "Technical Documentation", "ru": "Техническая документация"},
         "sales": {"en": "Sales and Negotiation", "ru": "Продажи и переговоры"},
         "financial": {"en": "Financial Analysis", "ru": "Финансовый анализ"},
-        "research": {"en": "Research Summaries", "ru": "Научные обзоры"},
-        "coaching": {"en": "Coaching and Mentoring", "ru": "Коучинг и наставничество"},
+        "research": {"en": "Research Summaries", "ru": "Научные исследования"},
+        "coaching": {"en": "Coaching and Mentoring", "ru": "Коучинг и менторство"},
         "creative": {"en": "Creative Writing", "ru": "Креативное письмо"},
-        "meetings": {"en": "Meeting Summaries", "ru": "Протоколы встреч"}
+        "meetings": {"en": "Meeting Summaries", "ru": "Протоколы встреч"},
+        "ecommerce": {"en": "E-commerce", "ru": "Электронная коммерция"},
+        "hr": {"en": "HR and Recruitment", "ru": "HR и рекрутинг"},
+        "marketing": {"en": "Marketing", "ru": "Маркетинг"},
+        "gaming": {"en": "Gaming", "ru": "Игры"}
     },
     "common": {
         "emotional_tone": {"en": "Emotional Tone", "ru": "Эмоциональный тон"},

@@ -13,7 +13,11 @@ from datetime import datetime
 from pathlib import Path
 
 from llm_providers import LLMProvider
+from llm_providers import LLMProvider
 import database as db
+from mlops.webhooks import get_webhook_manager
+from mlops.mlflow_integration import get_mlflow_logger
+from mlops.wandb_integration import get_wandb_logger
 
 class QualityController:
     """Quality controller for LLM datasets"""
@@ -511,6 +515,27 @@ async def process_quality_job(job_id: int, llm_provider: LLMProvider, batch_size
             
             # Update dataset metadata
             db.update_dataset(dataset_id, metadata={"has_improved_version": True, "improved_dataset_id": improved_dataset_id})
+            
+            # Trigger webhooks
+            get_webhook_manager().trigger_webhook("quality_check_completed", {
+                "job_id": job_id,
+                "dataset_id": dataset_id,
+                "improved_dataset_id": improved_dataset_id,
+                "avg_quality_score": avg_score,
+                "status": "success"
+            })
+            
+            # Log to MLOps platforms
+            metrics = {
+                "examples_processed": len(examples),
+                "examples_kept": stats['kept'],
+                "examples_fixed": stats['fixed'],
+                "examples_removed": stats['removed'],
+                "avg_quality_score": avg_score
+            }
+            get_mlflow_logger().log_quality_check(job_id, dataset_id, metrics)
+            get_wandb_logger().log_quality_check(job_id, dataset_id, metrics)
+            
         else:
             # Update job status to failed
             db.update_quality_job(
@@ -519,6 +544,12 @@ async def process_quality_job(job_id: int, llm_provider: LLMProvider, batch_size
                 completed_at=datetime.now().isoformat(),
                 errors=["Failed to save processed examples"]
             )
+            
+            # Trigger failure webhook
+            get_webhook_manager().trigger_webhook("quality_check_failed", {
+                "job_id": job_id,
+                "error": "Failed to save processed examples"
+            })
     except Exception as e:
         print(f"Error in quality job {job_id}: {e}")
         # Update job status to failed
@@ -528,6 +559,12 @@ async def process_quality_job(job_id: int, llm_provider: LLMProvider, batch_size
             completed_at=datetime.now().isoformat(),
             errors=[str(e)]
         )
+        
+        # Trigger failure webhook
+        get_webhook_manager().trigger_webhook("quality_check_failed", {
+            "job_id": job_id,
+            "error": str(e)
+        })
 
 def create_quality_job(dataset_id: int, parameters: Dict[str, Any]) -> int:
     """Create a new quality control job"""
