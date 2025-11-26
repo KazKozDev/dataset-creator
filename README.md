@@ -4,23 +4,15 @@ Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestra
 
 ## Who Is This For
 
-- **AI/ML Teams** building custom chatbots and assistants
-- **Enterprises** fine-tuning LLMs on domain-specific data (support, legal, medical, sales)
-- **Startups** creating training data without manual annotation
-- **Researchers** generating synthetic datasets for experiments
-
-## Use Cases
-
-- Customer support chatbots
-- Internal knowledge assistants
-- Domain-specific Q&A systems
-- Sales and onboarding bots
-- Educational tutors
+- **AI/ML Teams** building chatbots and assistants
+- **Enterprises** creating training data for internal tools
+- **Startups** generating datasets without manual annotation
+- **Researchers** running synthetic data experiments
 
 ## Features
 
-- **Generation**: 12+ domains (support, medical, legal, education, sales, etc.)
-- **Multi-Agent Orchestration**: Ensemble Cascade, Swarm Collective Convergence, Evolutionary Agents Fusion, Lattice Network Sync
+- **12+ Domains**: support, medical, legal, education, business, technical, sales, financial, research, coaching, creative, meetings, ecommerce
+- **Multi-Agent Orchestration**: 4 generation modes for different use cases
 - **Quality Control**: Toxicity detection, PII filtering, deduplication, diversity analysis
 - **Export Formats**: HuggingFace, OpenAI, Alpaca, LangChain
 - **Versioning**: Dataset diff, merge, version history
@@ -67,10 +59,6 @@ MISTRAL_API_KEY=...
 ```
 
 For local inference, install [Ollama](https://ollama.ai) and pull any model. The app auto-detects your installed models — choose what fits your hardware.
-
-## Domains
-
-support, medical, legal, education, business, technical, sales, financial, research, coaching, creative, meetings, ecommerce
 
 ## Multi-Agent Modes
 
