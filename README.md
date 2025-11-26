@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img width="350" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
+  <img width="330" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
   <p>
    <br> Synthetic dataset generator for fine-tuning LLMs.<br>
     Supports multi-agent orchestration, quality control, and multiple export formats.
