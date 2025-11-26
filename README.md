@@ -7,12 +7,7 @@
   </p>
 </div>
 
-## Who Is This For
-
-- **AI/ML Teams** building chatbots and assistants
-- **Enterprises** creating training data for internal tools
-- **Startups** generating datasets without manual annotation
-- **Researchers** running synthetic data experiments
+This tool is designed for AI/ML teams building chatbots and assistants, enterprises creating training data for internal tools, startups generating datasets without manual annotation, and researchers running synthetic data experiments. Whether you're scaling conversational AI, accelerating model development, or exploring new approaches to data generation, this framework provides the infrastructure to produce high-quality synthetic datasets efficiently.
 
 ## Features
 
