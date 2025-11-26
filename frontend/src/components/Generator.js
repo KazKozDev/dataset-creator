@@ -542,6 +542,28 @@ const Generator = () => {
     potential: FiTrendingUp,
   };
 
+  // Model recommendations for each agent role
+  const roleModelHints = {
+    // Swarm agents
+    scout: '14-40B creative',
+    gatherer: '7-14B analytical',
+    mutator: '3-7B fast',
+    selector: '14-40B smart',
+    // Evolution agents
+    mutagen: '7-14B creative',
+    crossover: '14-40B reasoning',
+    // Cosmic agents
+    exploder: '14-40B creative',
+    cooler: '3-7B fast',
+    synthesizer: '14-40B quality',
+    // Quantum agents
+    gauge: '14-40B diverse',
+    fermion: '3-7B fast',
+    higgs: '14-40B analytical',
+    yukawa: '3-7B fast',
+    potential: 'any (formatter)',
+  };
+
   const getAgentIcon = (role) => roleIconMap[role] || FiCpu;
 
   // Render domain selection step
@@ -765,6 +787,9 @@ const Generator = () => {
                               <Icon as={getAgentIcon(role)} boxSize={4} color="gray.500" />
                               <Text fontWeight="bold" fontSize="sm">
                                 {role.charAt(0).toUpperCase() + role.slice(1)}
+                              </Text>
+                              <Text fontSize="xs" color="gray.400" fontStyle="italic">
+                                {roleModelHints[role]}
                               </Text>
                             </HStack>
                             <VStack spacing={2}>
