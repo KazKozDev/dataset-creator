@@ -29,7 +29,9 @@ import {
   useColorModeValue,
   Tooltip,
   SimpleGrid,
-  Divider
+  Divider,
+  Alert,
+  AlertIcon
 } from '@chakra-ui/react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Link, useLocation } from 'react-router-dom';
@@ -51,15 +53,29 @@ function QualityControl() {
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
   // Fetch datasets
-  const { data: datasets } = useQuery({
+  const {
+    data: datasets,
+    isLoading: isLoadingDatasets,
+    isError: isDatasetsError,
+    error: datasetsError,
+    refetch: refetchDatasets
+  } = useQuery({
     queryKey: ['datasets'],
-    queryFn: getDatasets
+    queryFn: getDatasets,
+    retry: 1
   });
 
   // Fetch providers
-  const { data: providersData } = useQuery({
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders
+  } = useQuery({
     queryKey: ['providers'],
     queryFn: getProviders,
+    retry: 1
   });
 
   // Fetch models for selected provider
@@ -141,16 +157,27 @@ function QualityControl() {
     });
   };
 
+  // Helper function to safely render any value
+  const safeRender = (value) => {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
   // Calculate progress percentage
   const calculateProgress = () => {
     if (!jobStatus) return 0;
-    return (jobStatus.examples_processed / jobStatus.total_examples) * 100;
+    const processed = Number(jobStatus.examples_processed) || 0;
+    const total = Number(jobStatus.total_examples) || 1;
+    return (processed / total) * 100;
   };
 
   // Get dataset name by ID
   const getDatasetName = (id) => {
+    if (typeof id === 'object') return JSON.stringify(id);
     const dataset = datasets?.datasets?.find(d => d.id === id);
-    return dataset ? dataset.name : id;
+    if (!dataset) return String(id || '');
+    return safeRender(dataset.name);
   };
 
   // Parse dataset ID from URL if provided
@@ -161,6 +188,48 @@ function QualityControl() {
       setSelectedDataset(parseInt(datasetId));
     }
   }, [location]);
+
+  // Show loading state
+  if (isLoadingDatasets || isLoadingProviders) {
+    return (
+      <Box>
+        <Heading size="md" mb={6}>Quality Control</Heading>
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} p={6}>
+          <CardBody>
+            <VStack spacing={4}>
+              <Progress size="xs" isIndeterminate width="100%" />
+              <Text>Loading...</Text>
+            </VStack>
+          </CardBody>
+        </Card>
+      </Box>
+    );
+  }
+
+  // Show error state
+  if (isDatasetsError || isProvidersError) {
+    return (
+      <Box>
+        <Heading size="md" mb={6}>Quality Control</Heading>
+        <Card bg={cardBg} borderWidth="1px" borderColor={borderColor} p={6}>
+          <CardBody>
+            <Alert status="error" flexDirection="column" alignItems="center" justifyContent="center" textAlign="center" borderRadius="md">
+              <AlertIcon boxSize="40px" mr={0} />
+              <Heading size="md" mt={4} mb={1}>
+                Failed to load data
+              </Heading>
+              <Text mb={4}>
+                {datasetsError?.message || providersError?.message || 'Could not connect to the server.'}
+              </Text>
+              <Button colorScheme="red" onClick={() => { refetchDatasets(); refetchProviders(); }}>
+                Retry
+              </Button>
+            </Alert>
+          </CardBody>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box>
@@ -174,7 +243,7 @@ function QualityControl() {
                 <FormControl>
                   <FormLabel>Dataset</FormLabel>
                   <Tooltip
-                    label={selectedDataset ? `${getDatasetName(selectedDataset)} (${datasets?.datasets?.find(d => d.id === selectedDataset)?.example_count} examples)` : "Select a dataset"}
+                    label={selectedDataset ? `${getDatasetName(selectedDataset)} (${safeRender(datasets?.datasets?.find(d => d.id === selectedDataset)?.example_count)} examples)` : "Select a dataset"}
                     placement="top"
                     isDisabled={!selectedDataset}
                   >
@@ -186,7 +255,7 @@ function QualityControl() {
                     >
                       {datasets?.datasets?.map((dataset) => (
                         <option key={dataset.id} value={dataset.id}>
-                          {dataset.name} ({dataset.example_count} examples)
+                          {safeRender(dataset.name)} ({safeRender(dataset.example_count)} examples)
                         </option>
                       ))}
                     </Select>
@@ -205,7 +274,7 @@ function QualityControl() {
                   >
                     {providersData?.providers?.map((p) => (
                       <option key={p.id} value={p.id} disabled={!p.available}>
-                        {p.name} {!p.available && '(API key required)'}
+                        {safeRender(p.name)} {!p.available && '(API key required)'}
                       </option>
                     ))}
                   </Select>
@@ -230,7 +299,7 @@ function QualityControl() {
                       ) : Array.isArray(modelsData) && modelsData.length > 0 ? (
                         modelsData.map((m) => (
                           <option key={m.id} value={m.id}>
-                            {m.name}
+                            {safeRender(m.name)}
                           </option>
                         ))
                       ) : (
@@ -320,10 +389,10 @@ function QualityControl() {
 
                 <HStack spacing={4} mb={4}>
                   <Badge colorScheme={jobStatus.status === 'completed' ? 'green' : jobStatus.status === 'failed' ? 'red' : 'blue'}>
-                    {jobStatus.status}
+                    {safeRender(jobStatus.status)}
                   </Badge>
                   <Text>
-                    {jobStatus.examples_processed} / {jobStatus.total_examples} examples processed
+                    {safeRender(jobStatus.examples_processed)} / {safeRender(jobStatus.total_examples)} examples processed
                   </Text>
                 </HStack>
 
@@ -347,19 +416,19 @@ function QualityControl() {
                       <Tbody>
                         <Tr>
                           <Td>Average Quality Score</Td>
-                          <Td isNumeric>{jobStatus.average_score?.toFixed(2)}</Td>
+                          <Td isNumeric>{typeof jobStatus.average_score === 'number' ? jobStatus.average_score.toFixed(2) : safeRender(jobStatus.average_score)}</Td>
                         </Tr>
                         <Tr>
                           <Td>Examples Below Threshold</Td>
-                          <Td isNumeric>{jobStatus.below_threshold_count}</Td>
+                          <Td isNumeric>{safeRender(jobStatus.below_threshold_count)}</Td>
                         </Tr>
                         <Tr>
                           <Td>Examples Fixed</Td>
-                          <Td isNumeric>{jobStatus.fixed_count}</Td>
+                          <Td isNumeric>{safeRender(jobStatus.fixed_count)}</Td>
                         </Tr>
                         <Tr>
                           <Td>Examples Removed</Td>
-                          <Td isNumeric>{jobStatus.removed_count}</Td>
+                          <Td isNumeric>{safeRender(jobStatus.removed_count)}</Td>
                         </Tr>
                       </Tbody>
                     </Table>
@@ -378,7 +447,19 @@ function QualityControl() {
 
                 {jobStatus.status === 'failed' && (
                   <Text color="red.500">
-                    Error: {jobStatus.error || 'Unknown error occurred'}
+                    Error: {(() => {
+                      if (jobStatus.error) {
+                        return typeof jobStatus.error === 'object'
+                          ? JSON.stringify(jobStatus.error)
+                          : String(jobStatus.error);
+                      }
+                      if (Array.isArray(jobStatus.errors)) {
+                        return jobStatus.errors
+                          .map(e => typeof e === 'object' ? JSON.stringify(e) : String(e))
+                          .join(', ');
+                      }
+                      return 'Unknown error occurred';
+                    })()}
                   </Text>
                 )}
               </Box>

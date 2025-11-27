@@ -26,21 +26,34 @@ echo "--------------------------------"
 
 # 2. Start Backend in new terminal
 echo "Starting Backend Server..."
-osascript -e "tell application \"Terminal\" to do script \"cd '$PROJECT_DIR' && python3 backend/main.py\""
+osascript -e "tell application \"Terminal\" to do script \"cd '$PROJECT_DIR/backend' && uvicorn main:app --reload --port 8000\""
 
 # 3. Start Frontend in new terminal
 echo "Starting Frontend..."
 osascript -e "tell application \"Terminal\" to do script \"cd '$PROJECT_DIR/frontend' && npm start\""
 
-# 4. Wait a bit for servers to initialize
-echo "Waiting for servers to initialize (5 seconds)..."
-sleep 5
+# 4. Wait for servers to initialize
+echo "Waiting for servers to initialize (10 seconds)..."
+sleep 10
 
-# 5. Open Browser
+# 5. Check if frontend is running
+echo "Checking if frontend started..."
+if lsof -i :3000 > /dev/null 2>&1; then
+  echo "✅ Frontend is running on port 3000"
+else
+  echo "⚠️  Warning: Frontend may not have started yet"
+fi
+
+# 6. Open Browser
 echo "Opening Browser..."
 open "http://localhost:3000"
 
 echo "✅ Done! App is restarting."
+echo ""
+echo "📝 Note: Keep the terminal windows open!"
+echo "   - Backend terminal: uvicorn server"
+echo "   - Frontend terminal: npm start"
+echo ""
+echo "Press Ctrl+C in each terminal to stop the servers."
 
-# Close this terminal window
-osascript -e 'tell application "Terminal" to close front window' &
+# Don't close this window automatically - let user see the output

@@ -8,7 +8,7 @@ import json
 from typing import AsyncGenerator, Dict, Any, Optional
 from fastapi import Request
 from fastapi.responses import StreamingResponse
-from .agents.base_agent import AgentEvent, AgentEventBus
+from agents.base_agent import AgentEvent, AgentEventBus
 
 class EventStream:
     """SSE event stream manager"""
@@ -42,6 +42,10 @@ class EventStream:
                 "job_id": self.job_id,
                 "timestamp": asyncio.get_event_loop().time()
             })
+            
+            # Send any existing events from history
+            for event in self.event_bus.get_history():
+                yield self._format_sse(event.to_dict())
             
             while True:
                 try:

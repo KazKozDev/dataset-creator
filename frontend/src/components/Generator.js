@@ -98,7 +98,8 @@ import {
   FiStar,
   FiTrendingUp,
 } from 'react-icons/fi';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { getDomains, getProviders, getProviderModels, startGenerator, getGeneratorStatus, getTemplates } from '../services/api';
 import DomainCard from './common/DomainCard';
 import AgentMonitor from './AgentMonitor';
@@ -129,6 +130,7 @@ const DOMAIN_LABELS = {
 
 const Generator = () => {
   const toast = useToast();
+  const queryClient = useQueryClient();
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [selectedSubdomain, setSelectedSubdomain] = useState(null);
   const [generationParams, setGenerationParams] = useState({
@@ -225,9 +227,16 @@ const Generator = () => {
   }, [providersData]);
 
   // Fetch domains
-  const { data: domainsData, isLoading: isLoadingDomains } = useQuery({
+  const {
+    data: domainsData,
+    isLoading: isLoadingDomains,
+    isError: isDomainsError,
+    error: domainsError,
+    refetch: refetchDomains
+  } = useQuery({
     queryKey: ['domains'],
-    queryFn: getDomains
+    queryFn: getDomains,
+    retry: 1
   });
 
   // Fetch models for selected provider
@@ -246,7 +255,7 @@ const Generator = () => {
   // Group templates by domain for easier selection
   const groupedTemplates = React.useMemo(() => {
     if (!templatesData || templatesData.length === 0) return {};
-    
+
     const groups = {};
     templatesData.forEach(template => {
       const domain = template.domain || 'general';
@@ -255,24 +264,24 @@ const Generator = () => {
       }
       groups[domain].push(template);
     });
-    
+
     // Sort templates within each group by name
     Object.keys(groups).forEach(domain => {
       groups[domain].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     });
-    
+
     return groups;
   }, [templatesData]);
 
   // Filter templates by search query
   const filteredTemplates = React.useMemo(() => {
     if (!templateSearch.trim()) return groupedTemplates;
-    
+
     const search = templateSearch.toLowerCase();
     const filtered = {};
-    
+
     Object.entries(groupedTemplates).forEach(([domain, templates]) => {
-      const matching = templates.filter(t => 
+      const matching = templates.filter(t =>
         (t.name || '').toLowerCase().includes(search) ||
         (t.description || '').toLowerCase().includes(search) ||
         domain.toLowerCase().includes(search)
@@ -281,7 +290,7 @@ const Generator = () => {
         filtered[domain] = matching;
       }
     });
-    
+
     return filtered;
   }, [groupedTemplates, templateSearch]);
 
@@ -315,12 +324,21 @@ const Generator = () => {
     };
   }, [jobId]);
 
+  useEffect(() => {
+    if (jobStatus?.status === 'completed') {
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
+    }
+  }, [jobStatus, queryClient]);
+
   // Start generation mutation
   const startGenerationMutation = useMutation({
     mutationFn: startGenerator,
     onSuccess: (data) => {
       setJobId(data.job_id);
       setCurrentStep(2);
+      queryClient.invalidateQueries({ queryKey: ['datasets'] });
+      queryClient.invalidateQueries({ queryKey: ['analytics'] });
       toast({
         title: 'Generation started',
         description: `Job ID: ${data.job_id}`,
@@ -360,6 +378,18 @@ const Generator = () => {
   };
 
   const handleStartGeneration = () => {
+    // Validate model if in standard mode
+    if (generationParams.generation_mode === 'standard' && !generationParams.model) {
+      toast({
+        title: 'Model Required',
+        description: 'Please select a model to proceed with generation.',
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     // Validate agent models if in advanced mode
     if (generationParams.generation_mode === 'advanced') {
       const roles = getAgentRolesForMethod(generationParams.advanced_method);
@@ -408,6 +438,18 @@ const Generator = () => {
   };
 
   const handleGeneratePreview = async () => {
+    // Validate model if in standard mode
+    if (generationParams.generation_mode === 'standard' && !generationParams.model) {
+      toast({
+        title: 'Model Required',
+        description: 'Please select a model to proceed with preview generation.',
+        status: 'warning',
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
     // Validate agent models if in advanced mode
     if (generationParams.generation_mode === 'advanced') {
       const roles = getAgentRolesForMethod(generationParams.advanced_method);
@@ -450,22 +492,18 @@ const Generator = () => {
       // Call the generation API
       const response = await startGenerator(params);
 
-      // Wait a bit for generation to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Set job ID and switch to progress view to show logs
+      setJobId(response.job_id);
+      setCurrentStep(2);
+      setIsGeneratingPreview(false);
 
-      // Fetch the job status to get the example
-      const status = await getGeneratorStatus(response.job_id);
-
-      if (status.status === 'completed' && status.dataset_id) {
-        // Fetch the generated example
-        const { getDatasetExamples } = await import('../services/api');
-        const examples = await getDatasetExamples(status.dataset_id, { limit: 1 });
-
-        if (examples.examples && examples.examples.length > 0) {
-          setPreviewExample(examples.examples[0]);
-          onPreviewOpen();
-        }
-      }
+      toast({
+        title: 'Generating preview',
+        description: 'Watch the generation progress below',
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
     } catch (error) {
       const errorMessage = error.response?.data?.detail || error.message || 'Failed to generate preview';
       const suggestion = errorMessage.includes('model')
@@ -481,7 +519,6 @@ const Generator = () => {
         duration: 7000,
         isClosable: true,
       });
-    } finally {
       setIsGeneratingPreview(false);
     }
   };
@@ -576,6 +613,25 @@ const Generator = () => {
       );
     }
 
+    if (isDomainsError) {
+      return (
+        <Box textAlign="center" py={10}>
+          <Alert status="error" flexDirection="column" alignItems="center" justifyContent="center" textAlign="center" borderRadius="md">
+            <AlertIcon boxSize="40px" mr={0} />
+            <Heading size="md" mt={4} mb={1}>
+              Failed to load domains
+            </Heading>
+            <Text mb={4}>
+              {domainsError?.message || 'Could not connect to the server.'}
+            </Text>
+            <Button colorScheme="red" onClick={() => refetchDomains()}>
+              Retry
+            </Button>
+          </Alert>
+        </Box>
+      );
+    }
+
     return (
       <Box>
         <Text color="gray.600" mb={4}>
@@ -583,7 +639,7 @@ const Generator = () => {
         </Text>
 
         <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
-          {domainsData?.domains.map((domain) => (
+          {domainsData?.domains?.map((domain) => (
             <DomainCard
               key={domain.key}
               domain={domain}
@@ -979,7 +1035,7 @@ const Generator = () => {
                   />
                 </Tooltip>
               </FormLabel>
-              
+
               <Menu closeOnSelect={true} matchWidth>
                 <MenuButton
                   as={Button}
@@ -1026,7 +1082,7 @@ const Generator = () => {
                       )}
                     </InputGroup>
                   </Box>
-                  
+
                   {/* Default option */}
                   <MenuItem
                     onClick={() => handleParamChange('template', '')}
@@ -1037,9 +1093,9 @@ const Generator = () => {
                       {!generationParams.template && <Badge colorScheme="blue" size="sm">Selected</Badge>}
                     </HStack>
                   </MenuItem>
-                  
+
                   <MenuDivider />
-                  
+
                   {/* Grouped templates */}
                   {Object.keys(filteredTemplates).length === 0 ? (
                     <Box px={4} py={2}>
@@ -1049,8 +1105,8 @@ const Generator = () => {
                     </Box>
                   ) : (
                     Object.entries(filteredTemplates).map(([domain, domainTemplates]) => (
-                      <MenuGroup 
-                        key={domain} 
+                      <MenuGroup
+                        key={domain}
                         title={DOMAIN_LABELS[domain] || domain.charAt(0).toUpperCase() + domain.slice(1)}
                         color="gray.600"
                       >
@@ -1081,7 +1137,7 @@ const Generator = () => {
                   )}
                 </MenuList>
               </Menu>
-              
+
               {/* Show selected template info */}
               {selectedTemplate && (
                 <Box mt={2} p={2} bg="gray.50" borderRadius="md" fontSize="sm">
@@ -1099,11 +1155,11 @@ const Generator = () => {
                   </HStack>
                 </Box>
               )}
-              
+
               {!selectedTemplate && (
                 <Text fontSize="xs" color="gray.500" mt={1}>
-                  {templatesData.length > 0 
-                    ? `${templatesData.length} templates available` 
+                  {templatesData.length > 0
+                    ? `${templatesData.length} templates available`
                     : 'Custom templates allow you to control generation prompts'}
                 </Text>
               )}
@@ -1114,7 +1170,7 @@ const Generator = () => {
             <Button
               colorScheme="gray"
               variant="outline"
-              isDisabled={!selectedSubdomain || (generationParams.generation_mode === 'standard' && !generationParams.model)}
+              isDisabled={!selectedSubdomain}
               onClick={handleGeneratePreview}
               isLoading={isGeneratingPreview}
             >
@@ -1123,7 +1179,7 @@ const Generator = () => {
 
             <Button
               colorScheme="blue"
-              isDisabled={!selectedSubdomain || (generationParams.generation_mode === 'standard' && !generationParams.model)}
+              isDisabled={!selectedSubdomain}
               onClick={handleStartGeneration}
               isLoading={startGenerationMutation.isLoading}
             >
@@ -1183,11 +1239,11 @@ const Generator = () => {
                 <Stat>
                   <StatLabel>Status</StatLabel>
                   <StatNumber fontSize="md">
-                    <Badge 
+                    <Badge
                       colorScheme={
-                        jobStatus?.status === 'completed' ? 'green' : 
-                        jobStatus?.status === 'failed' ? 'red' : 
-                        jobStatus?.status === 'running' ? 'blue' : 'gray'
+                        jobStatus?.status === 'completed' ? 'green' :
+                          jobStatus?.status === 'failed' ? 'red' :
+                            jobStatus?.status === 'running' ? 'blue' : 'gray'
                       }
                       fontSize="sm"
                     >
@@ -1214,9 +1270,9 @@ const Generator = () => {
 
               {jobStatus?.status === 'completed' && jobStatus?.dataset_id && (
                 <Button
+                  as={Link}
+                  to={`/datasets/${jobStatus.dataset_id}`}
                   colorScheme="green"
-                  as="a"
-                  href={`/datasets/${jobStatus.dataset_id}`}
                 >
                   View Generated Dataset
                 </Button>
@@ -1244,8 +1300,8 @@ const Generator = () => {
                 </Text>
               </CardHeader>
               <CardBody p={0}>
-                <AgentMonitor 
-                  jobId={jobId} 
+                <AgentMonitor
+                  jobId={jobId}
                   onComplete={(data) => {
                     toast({
                       title: 'Generation Complete',
@@ -1313,13 +1369,13 @@ const Generator = () => {
                       Copy to Custom
                     </Button>
                   </HStack>
-                  
+
                   {selectedTemplate.description && (
                     <Text fontSize="sm" color="gray.600">
                       {selectedTemplate.description}
                     </Text>
                   )}
-                  
+
                   <Box border="1px" borderColor="gray.200" borderRadius="md" overflow="hidden" h="400px">
                     <Editor
                       height="400px"
@@ -1336,7 +1392,7 @@ const Generator = () => {
                       }}
                     />
                   </Box>
-                  
+
                   <Text fontSize="xs" color="gray.500">
                     This is a saved template. To modify it, copy to custom or go to Templates page.
                   </Text>

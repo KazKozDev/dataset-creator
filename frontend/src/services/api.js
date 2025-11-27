@@ -10,6 +10,53 @@ const api = axios.create({
   },
 });
 
+// Deep sanitization utility to prevent object rendering errors in React
+const deepSanitize = (obj, maxDepth = 5, currentDepth = 0) => {
+  // Prevent infinite recursion
+  if (currentDepth > maxDepth) {
+    return String(obj);
+  }
+
+  // Handle null/undefined
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  // Handle primitives
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+
+  // Handle arrays
+  if (Array.isArray(obj)) {
+    return obj.map(item => deepSanitize(item, maxDepth, currentDepth + 1));
+  }
+
+  // Handle objects - preserve structure but sanitize problem fields
+  const sanitized = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === null || value === undefined) {
+      sanitized[key] = value;
+    } else if (Array.isArray(value)) {
+      // Recursively sanitize arrays
+      sanitized[key] = value.map(item => deepSanitize(item, maxDepth, currentDepth + 1));
+    } else if (typeof value === 'object') {
+      // Check if this is a "display field" that might be rendered
+      const displayFields = ['name', 'description', 'title', 'label', 'text', 'message', 'error', 'errors'];
+      if (displayFields.includes(key)) {
+        // Convert to string to prevent rendering errors
+        sanitized[key] = JSON.stringify(value);
+      } else {
+        // For other fields, recursively sanitize (preserves data structure)
+        sanitized[key] = deepSanitize(value, maxDepth, currentDepth + 1);
+      }
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+};
+
 // Domain endpoints
 export const getDomains = async () => {
   const response = await api.get('/domains');
@@ -72,7 +119,8 @@ export const startQualityControl = async (params) => {
 
 export const getQualityStatus = async (jobId) => {
   const response = await api.get(`/quality/status/${jobId}`);
-  return response.data;
+  // Deep sanitization to prevent object rendering errors
+  return deepSanitize(response.data);
 };
 
 export const cancelQuality = async (jobId) => {
@@ -83,6 +131,12 @@ export const cancelQuality = async (jobId) => {
 // Dataset endpoints
 export const getDatasets = async (params) => {
   const response = await api.get('/datasets', { params });
+
+  // Deep sanitization to prevent object rendering errors
+  if (response.data?.datasets && Array.isArray(response.data.datasets)) {
+    response.data.datasets = response.data.datasets.map(dataset => deepSanitize(dataset));
+  }
+
   return response.data;
 };
 
@@ -361,11 +415,23 @@ export const getAnalyticsSummary = async (days = 30) => {
 // Model management endpoints
 export const getProviders = async () => {
   const response = await api.get('/models/providers');
+
+  // Deep sanitization to prevent object rendering errors
+  if (response.data?.providers && Array.isArray(response.data.providers)) {
+    response.data.providers = response.data.providers.map(provider => deepSanitize(provider));
+  }
+
   return response.data;
 };
 
 export const getProviderModels = async (provider) => {
   const response = await api.get(`/models/${provider}`);
+
+  // Deep sanitization to prevent object rendering errors
+  if (Array.isArray(response.data)) {
+    return response.data.map(model => deepSanitize(model));
+  }
+
   return response.data;
 };
 

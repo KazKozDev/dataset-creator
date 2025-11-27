@@ -21,6 +21,7 @@ import database as db
 from mlops.webhooks import get_webhook_manager
 from mlops.mlflow_integration import get_mlflow_logger
 from mlops.wandb_integration import get_wandb_logger
+from analytics import get_tracker
 
 class DatasetGenerator:
     """Generator for synthetic datasets"""
@@ -499,6 +500,34 @@ async def start_generation_job(job_id: int, llm_provider: LLMProvider, params: D
             }
             get_mlflow_logger().log_generation(job_id, params, metrics)
             get_wandb_logger().log_generation(job_id, params, metrics)
+
+            # Track analytics for dashboard charts
+            tracker = get_tracker()
+            try:
+                tracker.track_generation(
+                    job_id=job_id,
+                    provider=params.get('provider', 'unknown'),
+                    model=params.get('model', 'unknown'),
+                    examples_requested=job.get('examples_requested', count),
+                    examples_generated=len(examples),
+                    tokens_used=0,
+                    duration_seconds=metrics['generation_time'],
+                    cost_estimate=tracker.estimate_generation_cost(
+                        params.get('provider', 'unknown'),
+                        params.get('model', 'unknown'),
+                        0
+                    ),
+                    metadata={
+                        "domain": domain,
+                        "subdomain": subdomain,
+                        "format": format_type,
+                        "language": language,
+                        "template": template_name,
+                        "advanced": params.get('generation_mode') == 'advanced'
+                    }
+                )
+            except Exception as analytics_error:
+                print(f"Failed to track analytics for job {job_id}: {analytics_error}")
             
         else:
             # Update job status to failed

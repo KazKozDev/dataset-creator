@@ -80,14 +80,16 @@ const Sidebar = () => {
     >
       {/* Logo/Title */}
       <Box p={6} borderBottomWidth="1px" borderColor={borderColor}>
-        <HStack align="start" spacing={3}>
-          <Image src="/logo.png" alt="Logo" boxSize="70px" objectFit="contain" />
-          <VStack align="start" spacing={0}>
-            <Heading size="md">Synthetic</Heading>
-            <Heading size="md">Data</Heading>
-            <Heading size="md">Foundry</Heading>
-          </VStack>
-        </HStack>
+        <Link to="/" style={{ textDecoration: 'none' }}>
+          <HStack align="start" spacing={3} cursor="pointer">
+            <Image src="/logo.png" alt="Logo" boxSize="70px" objectFit="contain" />
+            <VStack align="start" spacing={0}>
+              <Heading size="md">Synthetic</Heading>
+              <Heading size="md">Data</Heading>
+              <Heading size="md">Foundry</Heading>
+            </VStack>
+          </HStack>
+        </Link>
       </Box>
 
       <VStack spacing={0} align="stretch" flex="1">
