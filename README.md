@@ -9,7 +9,7 @@
 
 Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestration, quality control, and multiple export formats. Data preparation for distillation has never been this easy.
 
-This tool is designed for AI/ML teams building chatbots and assistants, enterprises creating training data for internal tools, startups generating datasets without manual annotation, and researchers running synthetic data experiments. Whether you're scaling conversational AI, accelerating model development, or exploring new approaches to data generation, this framework provides the infrastructure to produce high-quality synthetic datasets efficiently.
+This tool is designed for AI/ML teams building chatbots and assistants, enterprises creating training data for internal tools, startups generating datasets without manual annotation, and researchers running synthetic data experiments. 
 
 ## Features
 
