@@ -85,7 +85,7 @@ Full API docs: http://localhost:8000/docs
 ## Related Articles
 
 📖 **[Beyond the Hype: Open Problems in Synthetic Data for AI](https://medium.com/@kazkozdev/beyond-the-hype-open-problems-in-synthetic-data-for-ai-d908a5f1ed5e)**  
-An in-depth exploration of current challenges and opportunities in synthetic data generation (2024–2025 Research)
+An in-depth exploration of current challenges and opportunities in synthetic data generation (24–2025 Research)
 
 ---
 
