@@ -18,8 +18,13 @@ This tool is designed for AI/ML teams building chatbots and assistants, enterpri
 - **Quality Control**: Toxicity detection, PII filtering, deduplication, diversity analysis
 - **Export Formats**: HuggingFace, OpenAI, Alpaca, LangChain
 - **Versioning**: Dataset diff, merge, version history
-
-<img width="1379" height="947" alt="Screenshot 2025-11-26 at 20 06 22" src="https://github.com/user-attachments/assets/6bf845d5-b3c0-45af-a119-f1abdfc8b390" />
+ <br> <br>
+ 
+ <p align="center">
+  <img alt="Synthetic Data Foundry interface demo" src="https://github.com/user-attachments/assets/9ddeb2ac-f6d8-4a2b-8cdc-eca4ebf12641" />
+  <br>
+  <sub>Dashboard and navigation overview</sub>
+</p>
 
 ## Quick Start
 
