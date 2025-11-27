@@ -82,12 +82,16 @@ Base URL: `http://localhost:8000`
 
 Full API docs: http://localhost:8000/docs
 
-## Learn More
+## Related Articles
 
-**[Beyond the Hype: Open Problems in Synthetic Data for AI](https://medium.com/@kazkozdev/beyond-the-hype-open-problems-in-synthetic-data-for-ai-d908a5f1ed5e)** — Deep dive into challenges and opportunities in synthetic data generation (2024–2025 Research).
+📖 **[Beyond the Hype: Open Problems in Synthetic Data for AI](https://medium.com/@kazkozdev/beyond-the-hype-open-problems-in-synthetic-data-for-ai-d908a5f1ed5e)**  
+An in-depth exploration of current challenges and opportunities in synthetic data generation (2024–2025 Research)
 
 ---
 
 If you like this project, please give it a star ⭐
 
 For questions, feedback, or support, reach out to:
+
+[Artem KK](https://www.linkedin.com/in/kazkozdev/) | MIT [LICENSE](LICENSE) 
+
