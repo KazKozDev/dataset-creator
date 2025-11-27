@@ -2,10 +2,12 @@
 <div align="center">
   <img width="330" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
   <p>
-   <br> Synthetic dataset generator for fine-tuning LLMs.<br>
-    Supports multi-agent orchestration, quality control, and multiple export formats.
+   <br> <h3>Quality datasets. In just a few clicks.</h3><br>
+   
   </p>
 </div>
+
+Synthetic dataset generator for fine-tuning LLMs. Supports multi-agent orchestration, quality control, and multiple export formats.
 
 This tool is designed for AI/ML teams building chatbots and assistants, enterprises creating training data for internal tools, startups generating datasets without manual annotation, and researchers running synthetic data experiments. Whether you're scaling conversational AI, accelerating model development, or exploring new approaches to data generation, this framework provides the infrastructure to produce high-quality synthetic datasets efficiently.
 
