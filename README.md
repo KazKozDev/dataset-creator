@@ -20,8 +20,8 @@ This tool is designed for AI/ML teams building chatbots and assistants, enterpri
 - **Versioning**: Dataset diff, merge, version history
  <br> <br>
  
- <p align="center">
-  <img alt="Synthetic Data Foundry interface demo" src="https://github.com/user-attachments/assets/9ddeb2ac-f6d8-4a2b-8cdc-eca4ebf12641" />
+<p align="center">
+  <img width="750" alt="Synthetic Data Foundry interface demo" src="https://github.com/user-attachments/assets/9ddeb2ac-f6d8-4a2b-8cdc-eca4ebf12641" />
   <br>
   <sub>Dashboard and navigation overview</sub>
 </p>
