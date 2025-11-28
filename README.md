@@ -21,10 +21,11 @@ This tool is designed for AI/ML teams building chatbots and assistants, enterpri
  <br> <br>
  
 <p align="center">
-  <img width="750" alt="Synthetic Data Foundry interface demo" src="https://github.com/user-attachments/assets/9ddeb2ac-f6d8-4a2b-8cdc-eca4ebf12641" />
+  <img width="750" alt="Synthetic Data Foundry interface demo" src="https://github.com/user-attachments/assets/eb0386ae-4007-4869-9b56-36166f9f51e0" />
   <br>
   <sub>Dashboard and navigation overview</sub>
 </p>
+
 
 ## Quick Start
 
