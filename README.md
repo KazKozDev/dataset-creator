@@ -1,6 +1,6 @@
 
 <div align="center">
-  <img width="340" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
+  <img width="400" height="" alt="sdf" src="https://github.com/user-attachments/assets/97944bef-5254-423c-9aa7-10909b49eb69" />
   <p>
    <h3>Quality datasets. In just a few clicks.</h3>
    
